@@ -222,6 +222,74 @@ it('returns dry-run preview when confirm=false for page content update', functio
     }
 });
 
+it('keeps dry-run preview when elicitation is advertised but unavailable in direct tool calls', function (): void {
+    $binary = realpath(__DIR__ . '/../../vendor/bin/kirby');
+    expect($binary)->not()->toBeFalse();
+
+    putenv(KirbyCliRunner::ENV_KIRBY_BIN . '=' . $binary);
+    putenv('KIRBY_MCP_PROJECT_ROOT=' . cmsPath());
+
+    $tools = new RuntimeTools();
+    $install = $tools->runtimeInstall(force: true);
+    $commandsRoot = $install['commandsRoot'];
+
+    try {
+        $session = new Session(new InMemorySessionStore(60));
+        $session->set('client_capabilities', ['elicitation' => []]);
+        $request = (new CallToolRequest('kirby_update_page_content', []))->withId('test-elicitation-page');
+        $context = new RequestContext($session, $request);
+
+        $result = $tools->updatePageContent(
+            id: 'home',
+            data: ['headline' => 'Dry Run Elicitation Fallback'],
+            payloadValidatedWithFieldSchemas: true,
+            confirm: false,
+            context: $context,
+        );
+
+        expect($result)->toBeInstanceOf(CallToolResult::class);
+        if (!$result instanceof CallToolResult) {
+            throw new RuntimeException('Expected a CallToolResult instance.');
+        }
+
+        expect($result->structuredContent)->toBeArray();
+        expect($result->structuredContent)->toHaveKey('ok', false);
+        expect($result->structuredContent)->toHaveKey('needsConfirm', true);
+    } finally {
+        foreach ($install['installed'] as $relativePath) {
+            $path = rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $relativePath;
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+
+        foreach ([
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'cli',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'page',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'config',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'site',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'file',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'user',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'query',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp',
+        ] as $dir) {
+            if (!is_dir($dir)) {
+                continue;
+            }
+
+            $entries = scandir($dir);
+            if ($entries === false) {
+                continue;
+            }
+
+            $remaining = array_diff($entries, ['.', '..']);
+            if ($remaining === []) {
+                rmdir($dir);
+            }
+        }
+    }
+});
+
 it('updates page content via runtime CLI (confirm=true) and restores fixture', function (): void {
     $binary = realpath(__DIR__ . '/../../vendor/bin/kirby');
     expect($binary)->not()->toBeFalse();

@@ -214,3 +214,114 @@ it('requires payloadValidatedWithFieldSchemas before updating site/file/user con
     expect($user)->toHaveKey('ok', false);
     expect($user)->toHaveKey('needsSchemaValidation', true);
 });
+
+it('updates site/file/user content from JSON-encoded object strings when confirm=true', function (): void {
+    $binary = realpath(__DIR__ . '/../../vendor/bin/kirby');
+    expect($binary)->not()->toBeFalse();
+
+    putenv(KirbyCliRunner::ENV_KIRBY_BIN . '=' . $binary);
+    putenv('KIRBY_MCP_PROJECT_ROOT=' . cmsPath());
+
+    $projectRoot = cmsPath();
+    $siteContentFile = $projectRoot . '/content/site.txt';
+    $fileContentFile = $projectRoot . '/content/3_about/writing.jpg.txt';
+
+    $siteOriginal = file_get_contents($siteContentFile);
+    $fileOriginal = file_get_contents($fileContentFile);
+    expect($siteOriginal)->toBeString();
+    expect($fileOriginal)->toBeString();
+
+    $tools = new RuntimeTools();
+    $install = $tools->runtimeInstall(force: true);
+    $commandsRoot = $install['commandsRoot'];
+
+    $previousErrorHandlers = captureErrorHandlers();
+    $previousWhoops = App::$enableWhoops;
+    App::$enableWhoops = false;
+
+    $previousApp = App::instance(null, true);
+    $app = new App([
+        'roots' => [
+            'index' => $projectRoot,
+        ],
+    ]);
+
+    ensureUser($app, 'mcp-runtime-json@example.com', [
+        'city' => 'Rome',
+    ]);
+
+    try {
+        $siteUpdate = $tools->updateSiteContent(
+            data: '{"title":"Runtime Site JSON String"}',
+            payloadValidatedWithFieldSchemas: true,
+            confirm: true,
+        );
+        expect($siteUpdate)->toHaveKey('ok', true);
+        expect($siteUpdate['content']['title'] ?? null)->toBe('Runtime Site JSON String');
+
+        $fileUpdate = $tools->updateFileContent(
+            id: 'file://mHEVVr6xtDc3gIip',
+            data: '{"alt":"Runtime File JSON String"}',
+            payloadValidatedWithFieldSchemas: true,
+            confirm: true,
+        );
+        expect($fileUpdate)->toHaveKey('ok', true);
+        expect($fileUpdate['content']['alt'] ?? null)->toBe('Runtime File JSON String');
+
+        $userUpdate = $tools->updateUserContent(
+            id: 'mcp-runtime-json@example.com',
+            data: '{"city":"Runtime User JSON String"}',
+            payloadValidatedWithFieldSchemas: true,
+            confirm: true,
+        );
+        expect($userUpdate)->toHaveKey('ok', true);
+        expect($userUpdate['content']['city'] ?? null)->toBe('Runtime User JSON String');
+    } finally {
+        if (is_string($siteOriginal)) {
+            file_put_contents($siteContentFile, $siteOriginal);
+        }
+
+        if (is_string($fileOriginal)) {
+            file_put_contents($fileContentFile, $fileOriginal);
+        }
+
+        if ($previousApp instanceof App) {
+            App::instance($previousApp);
+        }
+        App::$enableWhoops = $previousWhoops;
+        restoreErrorHandlers($previousErrorHandlers);
+
+        foreach ($install['installed'] as $relativePath) {
+            $path = rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $relativePath;
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+
+        foreach ([
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'cli',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'page',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'config',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'site',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'file',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'user',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp' . DIRECTORY_SEPARATOR . 'query',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'mcp',
+            rtrim($commandsRoot, DIRECTORY_SEPARATOR),
+        ] as $dir) {
+            if (!is_dir($dir)) {
+                continue;
+            }
+
+            $entries = scandir($dir);
+            if ($entries === false) {
+                continue;
+            }
+
+            $remaining = array_diff($entries, ['.', '..']);
+            if ($remaining === []) {
+                rmdir($dir);
+            }
+        }
+    }
+});

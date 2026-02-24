@@ -241,6 +241,10 @@ Current inventory: 37 tools, 15 resources, 15 resource templates, 216 KB article
 - `kirby_update_site_content` — update site content, plus confirm (see `kirby://blueprint/site/update-schema` + `kirby://field/{type}/update-schema` for payload shapes)
 - `kirby_update_user_content` — update user content, plus confirm (see `kirby://blueprint/user/update-schema` + `kirby://field/{type}/update-schema` for payload shapes)
 
+Update tool `data` input accepts either a JSON object or a JSON-encoded object string for backward compatibility.
+If your client supports MCP resource subscriptions, successful `kirby_update_*_content` writes emit `notifications/resources/updated` for subscribed content resources (`kirby://site/content`, `kirby://page/content/{...}`, `kirby://file/content/{...}`, `kirby://user/content/{...}`).
+Confirm-gated tools (`kirby_update_*_content`, `kirby_eval`, `kirby_query_dot`) keep explicit `confirm=true`; clients with MCP elicitation support may present an inline confirmation prompt and continue on accept.
+
 </details>
 
 <details>
@@ -403,8 +407,8 @@ The agent can both check and generate IDE helpers for your project: `kirby_ide_h
 
 - `kirby_run_cli_command` is guarded by an allowlist; extend it via `.kirby-mcp/mcp.json` (`cli.allow`, `cli.allowWrite`) and block via `cli.deny`.
 - Write-capable actions require explicit opt-in (e.g. `allowWrite=true` or `confirm=true`, depending on the tool).
-- `kirby_eval` is disabled by default; enable via `KIRBY_MCP_ENABLE_EVAL=1` or `.kirby-mcp/mcp.json` (`{"eval":{"enabled":true}}`) and still confirm per call.
-- `kirby_query_dot` is enabled by default; disable via `.kirby-mcp/mcp.json` (`{"query":{"enabled":false}}`) and still confirm per call.
+- `kirby_eval` is disabled by default; enable via `KIRBY_MCP_ENABLE_EVAL=1` or `.kirby-mcp/mcp.json` (`{"eval":{"enabled":true}}`) and still requires per-call confirmation (`confirm=true` or client-side elicitation).
+- `kirby_query_dot` is enabled by default; disable via `.kirby-mcp/mcp.json` (`{"query":{"enabled":false}}`) and still requires per-call confirmation (`confirm=true` or client-side elicitation).
 
 ## What `install` / `update` change in your project
 

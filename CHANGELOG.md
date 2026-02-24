@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+## [1.4.0] - 2026-02-24
+
+- Updated MCP PHP SDK dependency to `mcp/sdk` v0.4.0.
+- Added MCP resource update notifications for subscribed resources after successful content writes (`kirby_update_page_content`, `kirby_update_site_content`, `kirby_update_file_content`, `kirby_update_user_content`).
+- Notifications use `notifications/resources/updated` and currently include only the changed resource `uri` (clients should re-read the resource for fresh content).
+- Subscription tracking is session-scoped and event-based (emitted after successful write tools; out-of-band file/panel edits are not detected).
+- Added optional client-side MCP elicitation confirmation for confirm-gated runtime tools (`kirby_update_page_content`, `kirby_update_site_content`, `kirby_update_file_content`, `kirby_update_user_content`, `kirby_eval`, `kirby_query_dot`) while keeping explicit `confirm=true` behavior and dry-run fallback.
+- Kept backward compatibility for update-tool `data` payloads by accepting both JSON objects and JSON-encoded object strings in tool schemas and runtime parsing.
+
 ## [1.3.1] - 2026-01-12
 
 - Updated MCP PHP SDK dependency to `mcp/sdk` v0.3.0.

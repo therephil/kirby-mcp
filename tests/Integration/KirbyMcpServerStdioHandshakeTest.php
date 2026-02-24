@@ -104,6 +104,12 @@ it('boots the MCP stdio server and answers initialize', function (): void {
     expect($serverInfo['version'])->toBeString();
     expect(str_starts_with($serverInfo['version'], $expectedVersion))->toBeTrue();
 
+    $capabilities = $byId['1']['result']['capabilities'] ?? null;
+    expect($capabilities)->toBeArray();
+    expect($capabilities)->toHaveKey('resources');
+    expect($capabilities['resources'])->toBeArray();
+    expect($capabilities['resources']['subscribe'] ?? null)->toBeTrue();
+
     expect($byId)->toHaveKey('2');
     expect($byId['2'])->toHaveKey('result');
     expect($byId['2']['result'])->toHaveKey('tools');
@@ -129,6 +135,22 @@ it('boots the MCP stdio server and answers initialize', function (): void {
         expect($outputSchema)->toBeArray();
         expect($outputSchema)->toHaveKey('type');
         expect($outputSchema['type'])->toBe('object');
+    }
+
+    foreach ([
+        'kirby_update_page_content',
+        'kirby_update_site_content',
+        'kirby_update_file_content',
+        'kirby_update_user_content',
+    ] as $toolName) {
+        expect($byName)->toHaveKey($toolName);
+        $tool = $byName[$toolName];
+        $inputSchema = $tool['inputSchema'] ?? null;
+        expect($inputSchema)->toBeArray();
+        $dataType = $inputSchema['properties']['data']['type'] ?? null;
+        expect($dataType)->toBeArray();
+        expect($dataType)->toContain('object');
+        expect($dataType)->toContain('string');
     }
 
     expect($byId)->toHaveKey('3');

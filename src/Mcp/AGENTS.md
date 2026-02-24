@@ -33,8 +33,9 @@ Maintain a stable and secure MCP surface: tools, resources, and completions for 
 ## Guardrails
 
 - Treat tool names, parameter schemas, and `kirby://...` URIs as public API; changes must be reflected in tests + docs.
-- Keep tool input schemas aligned with actual payload handling (e.g. `kirby_update_page_content.data` expects an object; JSON strings may be accepted for compatibility but should be parsed explicitly).
+- Keep tool input schemas aligned with actual payload handling (e.g. `kirby_update_page_content.data` accepts an object and a JSON string for compatibility; expose both types in schema and parse strings explicitly).
 - Any write-capable tool/command must be explicitly gated (allowlist + confirmation) and reviewed for abuse paths.
+- If you add MCP elicitation to a confirm-gated tool, keep explicit `confirm=true` support and preserve dry-run fallback when elicitation is unavailable/declined.
 - Keep `kirby_run_cli_command` defaults minimal; prefer dedicated tools/resources over broad allowlist patterns (especially for `mcp:*` runtime wrappers).
 - Return structured data; avoid `echo`/side effects from tools/resources.
 - Treat query evaluation tools (e.g. `kirby_query_dot`) as sensitive; keep confirm gating and document default enablement/disable switches.
@@ -43,5 +44,7 @@ Maintain a stable and secure MCP surface: tools, resources, and completions for 
 - Logging level is session-scoped; read and set it via `LoggingState` using the active `SessionInterface` (`Protocol::SESSION_LOGGING_LEVEL`).
 - Dump trace IDs are session-scoped; only use `DumpState` with the active `SessionInterface`.
 - Provide tool output schemas via `#[McpTool(outputSchema: ...)]` (SDK v0.3+); keep `structuredContent` + JSON text in sync.
+- SDK v0.4 validates tool input before method execution and adds resource subscribe/unsubscribe handlers; when behavior depends on legacy-compatible inputs or mutable resources, reflect that in schemas and tests.
+- Write tools that mutate content exposed via `kirby://...` resources should emit `notifications/resources/updated` for subscribed URIs (session-scoped subscriptions).
 - Resource list entries should include MCP `annotations` (audience + priority) and `_meta.lastModified` when the data source is known; size-bearing resources are registered manually in `bin/kirby-mcp`.
 - Keep init/info payloads lean; omit heavy blobs like `composer.lock` from tool/resource outputs (composer audit does not return lock data).

@@ -375,7 +375,12 @@ final class QueryDot extends RuntimeCommand
         }
 
         try {
-            return $model->uuid()->toString();
+            $uuid = $model->uuid();
+            if ($uuid === null) {
+                return null;
+            }
+
+            return $uuid->toString();
         } catch (Throwable) {
             return null;
         }
@@ -423,6 +428,7 @@ final class QueryDot extends RuntimeCommand
     }
 
     /**
+     * @param Pages<Page> $pages
      * @return array<string, mixed>
      */
     private static function summarizePages(Pages $pages, int $maxItems): array
@@ -449,6 +455,7 @@ final class QueryDot extends RuntimeCommand
     }
 
     /**
+     * @param Files<File> $files
      * @return array<string, mixed>
      */
     private static function summarizeFiles(Files $files, int $maxItems): array
@@ -475,6 +482,7 @@ final class QueryDot extends RuntimeCommand
     }
 
     /**
+     * @param Users<User> $users
      * @return array<string, mixed>
      */
     private static function summarizeUsers(Users $users, int $maxItems): array
@@ -501,7 +509,7 @@ final class QueryDot extends RuntimeCommand
     }
 
     /**
-     * @param CmsCollection|Collection $collection
+     * @param CmsCollection|Collection<mixed> $collection
      * @return array<string, mixed>
      */
     private static function summarizeCollection($collection, int $maxItems): array

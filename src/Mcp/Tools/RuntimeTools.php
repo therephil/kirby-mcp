@@ -21,6 +21,9 @@ use Bnomei\KirbyMcp\Support\StaticCache;
 use Mcp\Capability\Attribute\Schema;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
+use Mcp\Schema\Elicitation\BooleanSchemaDefinition;
+use Mcp\Schema\Elicitation\ElicitationSchema;
+use Mcp\Schema\Notification\ResourceUpdatedNotification;
 use Mcp\Schema\Result\CallToolResult;
 use Mcp\Schema\ToolAnnotations;
 use Mcp\Server\RequestContext;
@@ -649,7 +652,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_page_content',
-        description: 'Update a page’s content by id or uuid via the installed `kirby mcp:page:update` CLI command. PREREQUISITE: Read `kirby://blueprint/page/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"title":"Hello","text":"..."}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$page->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
+        description: 'Update a page’s content by id or uuid via the installed `kirby mcp:page:update` CLI command. PREREQUISITE: Read `kirby://blueprint/page/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"title":"Hello","text":"..."}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$page->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update Page Content',
             readOnlyHint: false,
@@ -763,6 +766,45 @@ final class RuntimeTools
         $payload = array_merge($result->payload, [
             'cli' => $result->cli(),
         ]);
+
+        if (
+            $confirm !== true &&
+            $this->shouldRunWithElicitedConfirm(
+                $context,
+                $payload,
+                'Run kirby_update_page_content for page "' . $id . '" and apply keys: ' . $this->previewList(array_keys($data)) . '?',
+            )
+        ) {
+            $confirmedArgs = $args;
+            $confirmedArgs[] = '--confirm';
+
+            $confirmed = $runner->runMarkedJson(RuntimeCommands::PAGE_UPDATE_FILE, $confirmedArgs, timeoutSeconds: 60);
+
+            if ($confirmed->installed !== true) {
+                return $this->maybeStructuredResult($context, $confirmed->needsRuntimeInstallResponse());
+            }
+
+            if (!is_array($confirmed->payload)) {
+                return $this->maybeStructuredResult($context, $confirmed->parseErrorResponse([
+                    'cli' => $confirmed->cli(),
+                ]));
+            }
+
+            $payload = array_merge($confirmed->payload, [
+                'cli' => $confirmed->cli(),
+                'confirmedVia' => 'elicitation',
+            ]);
+        }
+
+        $this->notifyUpdatedResourceUris(
+            $context,
+            $payload,
+            $this->templateResourceUris('page/content', [
+                $id,
+                is_array($payload['page'] ?? null) ? ($payload['page']['id'] ?? null) : null,
+                is_array($payload['page'] ?? null) ? ($payload['page']['uuid'] ?? null) : null,
+            ]),
+        );
 
         return $this->maybeStructuredResult($context, $payload);
     }
@@ -990,7 +1032,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_site_content',
-        description: 'Update the site’s content via the installed `kirby mcp:site:update` CLI command. PREREQUISITE: Read `kirby://blueprint/site/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"title":"Hello"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$site->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
+        description: 'Update the site’s content via the installed `kirby mcp:site:update` CLI command. PREREQUISITE: Read `kirby://blueprint/site/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"title":"Hello"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$site->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update Site Content',
             readOnlyHint: false,
@@ -1095,6 +1137,41 @@ final class RuntimeTools
             'cli' => $result->cli(),
         ]);
 
+        if (
+            $confirm !== true &&
+            $this->shouldRunWithElicitedConfirm(
+                $context,
+                $payload,
+                'Run kirby_update_site_content and apply keys: ' . $this->previewList(array_keys($data)) . '?',
+            )
+        ) {
+            $confirmedArgs = $args;
+            $confirmedArgs[] = '--confirm';
+
+            $confirmed = $runner->runMarkedJson(RuntimeCommands::SITE_UPDATE_FILE, $confirmedArgs, timeoutSeconds: 60);
+
+            if ($confirmed->installed !== true) {
+                return $this->maybeStructuredResult($context, $confirmed->needsRuntimeInstallResponse());
+            }
+
+            if (!is_array($confirmed->payload)) {
+                return $this->maybeStructuredResult($context, $confirmed->parseErrorResponse([
+                    'cli' => $confirmed->cli(),
+                ]));
+            }
+
+            $payload = array_merge($confirmed->payload, [
+                'cli' => $confirmed->cli(),
+                'confirmedVia' => 'elicitation',
+            ]);
+        }
+
+        $this->notifyUpdatedResourceUris(
+            $context,
+            $payload,
+            ['kirby://site/content'],
+        );
+
         return $this->maybeStructuredResult($context, $payload);
     }
 
@@ -1118,7 +1195,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_file_content',
-        description: 'Update a file’s content/metadata by id or uuid via the installed `kirby mcp:file:update` CLI command. PREREQUISITE: Read `kirby://blueprint/file/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"alt":"Hello"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$file->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
+        description: 'Update a file’s content/metadata by id or uuid via the installed `kirby mcp:file:update` CLI command. PREREQUISITE: Read `kirby://blueprint/file/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"alt":"Hello"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$file->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update File Content',
             readOnlyHint: false,
@@ -1233,6 +1310,45 @@ final class RuntimeTools
             'cli' => $result->cli(),
         ]);
 
+        if (
+            $confirm !== true &&
+            $this->shouldRunWithElicitedConfirm(
+                $context,
+                $payload,
+                'Run kirby_update_file_content for file "' . $id . '" and apply keys: ' . $this->previewList(array_keys($data)) . '?',
+            )
+        ) {
+            $confirmedArgs = $args;
+            $confirmedArgs[] = '--confirm';
+
+            $confirmed = $runner->runMarkedJson(RuntimeCommands::FILE_UPDATE_FILE, $confirmedArgs, timeoutSeconds: 60);
+
+            if ($confirmed->installed !== true) {
+                return $this->maybeStructuredResult($context, $confirmed->needsRuntimeInstallResponse());
+            }
+
+            if (!is_array($confirmed->payload)) {
+                return $this->maybeStructuredResult($context, $confirmed->parseErrorResponse([
+                    'cli' => $confirmed->cli(),
+                ]));
+            }
+
+            $payload = array_merge($confirmed->payload, [
+                'cli' => $confirmed->cli(),
+                'confirmedVia' => 'elicitation',
+            ]);
+        }
+
+        $this->notifyUpdatedResourceUris(
+            $context,
+            $payload,
+            $this->templateResourceUris('file/content', [
+                $id,
+                is_array($payload['file'] ?? null) ? ($payload['file']['id'] ?? null) : null,
+                is_array($payload['file'] ?? null) ? ($payload['file']['uuid'] ?? null) : null,
+            ]),
+        );
+
         return $this->maybeStructuredResult($context, $payload);
     }
 
@@ -1255,7 +1371,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_user_content',
-        description: 'Update a user’s content by id or email via the installed `kirby mcp:user:update` CLI command. PREREQUISITE: Read `kirby://blueprint/user/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"city":"Berlin"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$user->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
+        description: 'Update a user’s content by id or email via the installed `kirby mcp:user:update` CLI command. PREREQUISITE: Read `kirby://blueprint/user/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"city":"Berlin"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$user->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update User Content',
             readOnlyHint: false,
@@ -1370,6 +1486,45 @@ final class RuntimeTools
             'cli' => $result->cli(),
         ]);
 
+        if (
+            $confirm !== true &&
+            $this->shouldRunWithElicitedConfirm(
+                $context,
+                $payload,
+                'Run kirby_update_user_content for user "' . $id . '" and apply keys: ' . $this->previewList(array_keys($data)) . '?',
+            )
+        ) {
+            $confirmedArgs = $args;
+            $confirmedArgs[] = '--confirm';
+
+            $confirmed = $runner->runMarkedJson(RuntimeCommands::USER_UPDATE_FILE, $confirmedArgs, timeoutSeconds: 60);
+
+            if ($confirmed->installed !== true) {
+                return $this->maybeStructuredResult($context, $confirmed->needsRuntimeInstallResponse());
+            }
+
+            if (!is_array($confirmed->payload)) {
+                return $this->maybeStructuredResult($context, $confirmed->parseErrorResponse([
+                    'cli' => $confirmed->cli(),
+                ]));
+            }
+
+            $payload = array_merge($confirmed->payload, [
+                'cli' => $confirmed->cli(),
+                'confirmedVia' => 'elicitation',
+            ]);
+        }
+
+        $this->notifyUpdatedResourceUris(
+            $context,
+            $payload,
+            $this->templateResourceUris('user/content', [
+                $id,
+                is_array($payload['user'] ?? null) ? ($payload['user']['id'] ?? null) : null,
+                is_array($payload['user'] ?? null) ? ($payload['user']['email'] ?? null) : null,
+            ]),
+        );
+
         return $this->maybeStructuredResult($context, $payload);
     }
 
@@ -1394,7 +1549,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_eval',
-        description: 'Tinker/REPL (`tinker`): Execute PHP code in Kirby runtime via the installed `kirby mcp:eval` CLI command and return structured JSON (captured stdout + return value). Call it repeatedly like a REPL for quick inspection/debugging; tip: end with `return ...;` to capture a value. Disabled by default; enable via env `KIRBY_MCP_ENABLE_EVAL=1` or `.kirby-mcp/mcp.json` `{\"eval\":{\"enabled\":true}}`. Requires confirm=true and kirby_runtime_install first.',
+        description: 'Tinker/REPL (`tinker`): Execute PHP code in Kirby runtime via the installed `kirby mcp:eval` CLI command and return structured JSON (captured stdout + return value). Call it repeatedly like a REPL for quick inspection/debugging; tip: end with `return ...;` to capture a value. Disabled by default; enable via env `KIRBY_MCP_ENABLE_EVAL=1` or `.kirby-mcp/mcp.json` `{\"eval\":{\"enabled\":true}}`. Requires confirmation (`confirm=true` or client-side MCP elicitation) and kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Eval (CLI)',
             readOnlyHint: false,
@@ -1447,6 +1602,37 @@ final class RuntimeTools
             ]));
         }
 
+        $confirmedViaElicitation = false;
+
+        if (
+            $confirm !== true &&
+            $this->shouldRunWithElicitedConfirm(
+                $context,
+                $result->payload,
+                'Run kirby_eval and execute this PHP snippet in Kirby runtime? ' . $this->previewText($code),
+            )
+        ) {
+            $confirmedArgs = $args;
+            $confirmedArgs[] = '--confirm';
+
+            $confirmed = $runner->runMarkedJson(RuntimeCommands::EVAL_FILE, $confirmedArgs, timeoutSeconds: $timeoutSeconds);
+
+            if ($confirmed->installed !== true) {
+                return $this->maybeStructuredResult($context, $confirmed->needsRuntimeInstallResponse());
+            }
+
+            if (!is_array($confirmed->payload)) {
+                return $this->maybeStructuredResult($context, $confirmed->parseErrorResponse([
+                    'cliMeta' => $confirmed->cliMeta(),
+                    'message' => $debug === true ? null : RuntimeCommandResult::DEBUG_RETRY_MESSAGE,
+                    'cli' => $debug === true ? $confirmed->cli() : null,
+                ]));
+            }
+
+            $result = $confirmed;
+            $confirmedViaElicitation = true;
+        }
+
         /** @var array<string, mixed> $response */
         $response = $result->payload;
 
@@ -1469,6 +1655,10 @@ final class RuntimeTools
 
         if ($debug === true) {
             $response['cli'] = $result->cli();
+        }
+
+        if ($confirmedViaElicitation === true) {
+            $response['confirmedVia'] = 'elicitation';
         }
 
         return $this->maybeStructuredResult($context, $response);
@@ -1496,7 +1686,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_query_dot',
-        description: 'Evaluate Kirby query language (dot-notation) strings in Kirby runtime via the installed `kirby mcp:query:dot` CLI command and return structured JSON. Enabled by default; disable via `.kirby-mcp/mcp.json` (`{\"query\":{\"enabled\":false}}`) and still requires confirm=true. Use `model` to set context (page id or UUID like `page://...`, `file://...`, `user://...`, user email, file path with extension, or `site`). See `kirby://glossary/query-language`. Requires kirby_runtime_install first.',
+        description: 'Evaluate Kirby query language (dot-notation) strings in Kirby runtime via the installed `kirby mcp:query:dot` CLI command and return structured JSON. Enabled by default; disable via `.kirby-mcp/mcp.json` (`{\"query\":{\"enabled\":false}}`) and still requires confirmation (`confirm=true` or client-side MCP elicitation). Use `model` to set context (page id or UUID like `page://...`, `file://...`, `user://...`, user email, file path with extension, or `site`). See `kirby://glossary/query-language`. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Query (Dot Notation)',
             readOnlyHint: false,
@@ -1553,9 +1743,44 @@ final class RuntimeTools
             ]));
         }
 
+        $confirmedViaElicitation = false;
+
+        if (
+            $confirm !== true &&
+            $this->shouldRunWithElicitedConfirm(
+                $context,
+                $result->payload,
+                'Run kirby_query_dot with query "' . $this->previewText($query, 220) . '"' . (is_string($model) && trim($model) !== '' ? ' on model "' . trim($model) . '"' : '') . '?',
+            )
+        ) {
+            $confirmedArgs = $args;
+            $confirmedArgs[] = '--confirm';
+
+            $confirmed = $runner->runMarkedJson(RuntimeCommands::QUERY_DOT_FILE, $confirmedArgs, timeoutSeconds: $timeoutSeconds);
+
+            if ($confirmed->installed !== true) {
+                return $this->maybeStructuredResult($context, $confirmed->needsRuntimeInstallResponse());
+            }
+
+            if (!is_array($confirmed->payload)) {
+                return $this->maybeStructuredResult($context, $confirmed->parseErrorResponse([
+                    'cliMeta' => $confirmed->cliMeta(),
+                    'message' => $debug === true ? null : RuntimeCommandResult::DEBUG_RETRY_MESSAGE,
+                    'cli' => $debug === true ? $confirmed->cli() : null,
+                ]));
+            }
+
+            $result = $confirmed;
+            $confirmedViaElicitation = true;
+        }
+
         /** @var array<string, mixed> $response */
         $response = $result->payload;
         $response['cliMeta'] = $result->cliMeta();
+
+        if ($confirmedViaElicitation === true) {
+            $response['confirmedVia'] = 'elicitation';
+        }
 
         if ($debug === true) {
             $response['cli'] = $result->cli();
@@ -1697,6 +1922,173 @@ final class RuntimeTools
         sort($expected);
 
         return $expected;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function shouldRunWithElicitedConfirm(?RequestContext $context, array $payload, string $message): bool
+    {
+        if (($payload['needsConfirm'] ?? false) !== true) {
+            return false;
+        }
+
+        return $this->requestElicitedConfirm($context, $message);
+    }
+
+    private function requestElicitedConfirm(?RequestContext $context, string $message): bool
+    {
+        if ($context === null) {
+            return false;
+        }
+
+        $client = $context->getClientGateway();
+        if ($client->supportsElicitation() !== true) {
+            return false;
+        }
+
+        try {
+            $result = $client->elicit(
+                trim($message),
+                new ElicitationSchema(
+                    properties: [
+                        'confirm' => new BooleanSchemaDefinition(
+                            title: 'Confirm execution',
+                            description: 'Set to true to execute now. Set to false to keep the dry-run response.',
+                            default: false,
+                        ),
+                    ],
+                    required: ['confirm'],
+                ),
+            );
+        } catch (\Throwable $exception) {
+            try {
+                McpLog::error($context, [
+                    'message' => 'Elicitation failed; keeping dry-run response.',
+                    'exception' => $exception->getMessage(),
+                ]);
+            } catch (\Throwable) {
+                // Ignore logging failures outside transport fibers.
+            }
+
+            return false;
+        }
+
+        if ($result->isAccepted() !== true) {
+            return false;
+        }
+
+        return ($result->content['confirm'] ?? false) === true;
+    }
+
+    /**
+     * @param array<int, mixed> $values
+     */
+    private function previewList(array $values, int $maxItems = 8): string
+    {
+        $trimmed = [];
+        foreach ($values as $value) {
+            if (!is_string($value) && !is_int($value) && !is_float($value)) {
+                continue;
+            }
+
+            $candidate = trim((string) $value);
+            if ($candidate !== '') {
+                $trimmed[] = $candidate;
+            }
+        }
+
+        if ($trimmed === []) {
+            return '(none)';
+        }
+
+        $shown = array_slice($trimmed, 0, max(1, $maxItems));
+        $preview = implode(', ', $shown);
+
+        if (count($trimmed) > count($shown)) {
+            $preview .= ', ...';
+        }
+
+        return $preview;
+    }
+
+    private function previewText(string $value, int $maxChars = 180): string
+    {
+        $value = preg_replace('/\s+/', ' ', trim($value)) ?? trim($value);
+        if ($value === '') {
+            return '(empty)';
+        }
+
+        if (mb_strlen($value) <= $maxChars) {
+            return $value;
+        }
+
+        return rtrim(mb_substr($value, 0, $maxChars - 3)) . '...';
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<int, string>   $uris
+     */
+    private function notifyUpdatedResourceUris(?RequestContext $context, array $payload, array $uris): void
+    {
+        if ($context === null || ($payload['ok'] ?? false) !== true || $uris === []) {
+            return;
+        }
+
+        $subscriptions = $context->getSession()->get('resource_subscriptions', []);
+        if (!is_array($subscriptions) || $subscriptions === []) {
+            return;
+        }
+
+        foreach ($uris as $uri) {
+            if (!isset($subscriptions[$uri])) {
+                continue;
+            }
+
+            try {
+                $context->getClientGateway()->notify(new ResourceUpdatedNotification($uri));
+            } catch (\Throwable $exception) {
+                McpLog::error($context, [
+                    'message' => 'Failed to emit notifications/resources/updated.',
+                    'uri' => $uri,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param array<int, mixed> $values
+     * @return array<int, string>
+     */
+    private function templateResourceUris(string $resourcePrefix, array $values): array
+    {
+        $uris = [];
+
+        foreach ($values as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+
+            $candidate = trim($value);
+            if ($candidate === '') {
+                continue;
+            }
+
+            $uris[] = 'kirby://' . $resourcePrefix . '/' . rawurlencode($candidate);
+
+            if (str_contains($candidate, '://')) {
+                $parts = explode('://', $candidate, 2);
+                $stripped = trim((string) ($parts[1] ?? ''));
+
+                if ($stripped !== '') {
+                    $uris[] = 'kirby://' . $resourcePrefix . '/' . rawurlencode($stripped);
+                }
+            }
+        }
+
+        return array_values(array_unique($uris));
     }
 
     private function isEvalEnabled(string $projectRoot): bool

@@ -878,6 +878,7 @@ $server = $builder
     ->setCapabilities(new ServerCapabilities(
         tools: true,
         resources: true,
+        resourcesSubscribe: true,
         prompts: false,
         logging: true,
         completions: true,
