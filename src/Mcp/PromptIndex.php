@@ -18,6 +18,7 @@ final class PromptIndex
     /**
      * @var array<string, array{
      *   name: string,
+     *   title: string,
      *   description: string,
      *   args: array<int, array{
      *     name: string,
@@ -42,6 +43,7 @@ final class PromptIndex
     /**
      * @return array<int, array{
      *   name: string,
+     *   title: string,
      *   description: string,
      *   args: array<int, array{
      *     name: string,
@@ -107,6 +109,11 @@ final class PromptIndex
                     $description = self::docblockSummary($docComment !== false ? $docComment : null);
                 }
 
+                $title = is_string($mcpPrompt->title) ? trim($mcpPrompt->title) : '';
+                if ($title === '') {
+                    $title = self::titleFromName($name);
+                }
+
                 $icons = self::normalizeIcons($mcpPrompt->icons);
 
                 $args = [];
@@ -116,6 +123,7 @@ final class PromptIndex
 
                 $prompts[$name] = [
                     'name' => $name,
+                    'title' => $title,
                     'description' => $description,
                     'args' => $args,
                     'meta' => is_array($mcpPrompt->meta) ? $mcpPrompt->meta : null,
@@ -138,6 +146,7 @@ final class PromptIndex
     /**
      * @return array{
      *   name: string,
+     *   title: string,
      *   description: string,
      *   args: array<int, array{
      *     name: string,
@@ -330,5 +339,20 @@ final class PromptIndex
         }
 
         return '';
+    }
+
+    private static function titleFromName(string $name): string
+    {
+        $words = preg_split('/[_-]+/', trim($name));
+        if (!is_array($words) || $words === []) {
+            return $name;
+        }
+
+        $title = implode(' ', array_map(
+            static fn (string $word): string => $word === '' ? '' : ucfirst($word),
+            $words,
+        ));
+
+        return trim($title) !== '' ? trim($title) : $name;
     }
 }

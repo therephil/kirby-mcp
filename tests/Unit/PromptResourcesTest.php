@@ -25,6 +25,7 @@ it('returns prompt details and renders default messages', function (): void {
     $prompt = $resource->prompt('kirby_project_tour');
 
     expect($prompt['name'])->toBe('kirby_project_tour');
+    expect($prompt['title'])->toBe('Kirby Project Tour');
     expect($prompt['messages'])->toBeArray()->not()->toBeEmpty();
     expect($prompt['renderError'])->toBeNull();
 

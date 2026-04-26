@@ -68,6 +68,7 @@ final class KbTools
     )]
     #[McpTool(
         name: 'kirby_search',
+        title: 'Kirby Search',
         description: 'Search the bundled local Kirby knowledge base markdown files (kb/) using fuzzy Levenshtein matching and optionally return full markdown for the top matches (fetch). Prefer this before kirby_online.',
         annotations: new ToolAnnotations(
             title: 'Kirby Search',

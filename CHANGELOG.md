@@ -5,6 +5,13 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-04-26
+
+- Updated MCP PHP SDK dependency to `mcp/sdk` v0.5.0.
+- Added MCP spec-level titles to tools and prompts, and exposed prompt titles through prompt resources.
+- Reworked confirmation elicitation to use titled enum choices (`execute` / `preview`) while keeping legacy boolean confirmations working.
+- Refreshed project dependencies, including Kirby CMS 5.4.0, Symfony 7.4 components, `symfony/finder`, and Prettier 3.8.3.
+
 ## [1.4.0] - 2026-02-24
 
 - Updated MCP PHP SDK dependency to `mcp/sdk` v0.4.0.

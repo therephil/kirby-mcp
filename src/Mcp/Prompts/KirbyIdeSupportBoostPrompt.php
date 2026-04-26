@@ -14,6 +14,7 @@ final class KirbyIdeSupportBoostPrompt
      */
     #[McpPrompt(
         name: 'kirby_ide_support_boost',
+        title: 'Kirby IDE Support Boost',
         description: 'Improve IDE support via status + minimal type-hint fixes + optional helper generation.',
         meta: [
             'primaryTools' => [

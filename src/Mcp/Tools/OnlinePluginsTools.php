@@ -73,6 +73,7 @@ class OnlinePluginsTools
     )]
     #[McpTool(
         name: 'kirby_online_plugins',
+        title: 'Kirby Online Plugins',
         description: 'Search the official Kirby plugin directory (plugins.getkirby.com) and optionally fetch individual plugin pages to extract key details and return a markdown summary. Online fallback; prefer kirby_plugins_index for installed plugins.',
         annotations: new ToolAnnotations(
             title: 'Kirby Online Plugins',

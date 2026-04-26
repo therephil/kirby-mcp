@@ -14,6 +14,7 @@ final class KirbyContentMigrationAssistantPrompt
      */
     #[McpPrompt(
         name: 'kirby_content_migration_assistant',
+        title: 'Kirby Content Migration Assistant',
         description: 'Plan/apply a safe content migration using kirby_read_page_content + kirby_update_page_content (explicit confirmation required).',
         meta: [
             'requiresRuntimeInstall' => true,

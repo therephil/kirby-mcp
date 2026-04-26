@@ -99,6 +99,7 @@ final class ProjectTools
     )]
     #[McpTool(
         name: 'kirby_composer_audit',
+        title: 'Composer Audit',
         description: 'Parse composer.json to detect Kirby version, scripts, test runner, and quality tools (phpstan/larastan/psalm/mago/pint/phpcs/php-cs-fixer). Returns “how to run” commands. Resource: `kirby://composer`.',
         annotations: new ToolAnnotations(
             title: 'Composer Audit',
@@ -155,6 +156,7 @@ final class ProjectTools
     )]
     #[McpTool(
         name: 'kirby_info',
+        title: 'Project Info',
         description: 'Return project runtime info (PHP + Kirby version via Kirby CLI), composer audit, and local environment detection (Herd/DDEV/Docker). Resource: `kirby://info`.',
         annotations: new ToolAnnotations(
             title: 'Project Info',
@@ -202,6 +204,7 @@ final class ProjectTools
     )]
     #[McpTool(
         name: 'kirby_cli_version',
+        title: 'Kirby Version (CLI)',
         description: 'Run `kirby version` (Kirby CLI) and return stdout/stderr/exit code. Useful to confirm Kirby boots and which version is installed.',
         annotations: new ToolAnnotations(
             title: 'Kirby Version (CLI)',

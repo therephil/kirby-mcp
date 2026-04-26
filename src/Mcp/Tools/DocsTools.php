@@ -77,6 +77,7 @@ class DocsTools
     )]
     #[McpTool(
         name: 'kirby_online',
+        title: 'Kirby Online',
         description: 'Search official Kirby docs via `getkirby.com/search.json` and fetch markdown (`.md`) for docs pages. Slower online fallback; prefer kirby_search first. Does not use the local knowledge base.',
         annotations: new ToolAnnotations(
             title: 'Kirby Online',

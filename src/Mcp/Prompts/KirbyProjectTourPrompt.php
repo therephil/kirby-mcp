@@ -14,6 +14,7 @@ final class KirbyProjectTourPrompt
      */
     #[McpPrompt(
         name: 'kirby_project_tour',
+        title: 'Kirby Project Tour',
         description: 'Map the project (roots + inventory) and suggest next steps.',
         meta: [
             'primaryTools' => [

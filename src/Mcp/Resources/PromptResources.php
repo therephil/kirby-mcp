@@ -14,6 +14,7 @@ final class PromptResources
      *
      * @return array<int, array{
      *   name: string,
+     *   title: string,
      *   description: string,
      *   args: array<int, array{name: string, type: string, required: bool, default: mixed, completion: null|array{values?: array<int, int|float|string>, enum?: string, providerClass?: string}}>,
      *   meta: null|array<string, mixed>,
@@ -34,6 +35,7 @@ final class PromptResources
      *
      * @return array{
      *   name: string,
+     *   title: string,
      *   description: string,
      *   args: array<int, array{name: string, type: string, required: bool, default: mixed, completion: null|array{values?: array<int, int|float|string>, enum?: string, providerClass?: string}}>,
      *   meta: null|array<string, mixed>,

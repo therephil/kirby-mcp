@@ -13,6 +13,7 @@ it('indexes every MCP prompt via #[McpPrompt]', function (): void {
     expect(is_dir($promptsDir))->toBeTrue();
 
     $expectedPromptNames = [];
+    $missingPromptTitles = [];
 
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($promptsDir));
     foreach ($iterator as $file) {
@@ -45,6 +46,10 @@ it('indexes every MCP prompt via #[McpPrompt]', function (): void {
             }
 
             $expectedPromptNames[] = $name;
+
+            if (!is_string($mcpPrompt->title) || trim($mcpPrompt->title) === '') {
+                $missingPromptTitles[] = $class . '::' . $method->getName() . ' (' . $name . ')';
+            }
         }
     }
 
@@ -59,9 +64,11 @@ it('indexes every MCP prompt via #[McpPrompt]', function (): void {
     sort($indexedPromptNames);
 
     expect($indexedPromptNames)->toBe($expectedPromptNames);
+    expect($missingPromptTitles)->toBeEmpty();
 
     foreach (PromptIndex::all() as $prompt) {
         expect($prompt['name'])->toBeString()->not()->toBe('');
+        expect($prompt['title'])->toBeString()->not()->toBe('');
         expect($prompt['description'])->toBeString()->not()->toBe('');
         expect($prompt['args'])->toBeArray();
         expect($prompt['generator'])->toBeArray();

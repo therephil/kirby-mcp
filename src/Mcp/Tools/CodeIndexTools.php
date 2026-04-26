@@ -45,6 +45,7 @@ final class CodeIndexTools
     )]
     #[McpTool(
         name: 'kirby_templates_index',
+        title: 'Templates Index',
         description: 'Index Kirby templates keyed by id (e.g. home, notes.json). Defaults to a compact payload (no raw CLI stdout/stderr). Prefers runtime `kirby mcp:templates` (includes plugin-registered templates); falls back to filesystem scan when runtime commands are not installed. Supports idsOnly, fields selection, filters, and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Templates Index',
@@ -176,6 +177,7 @@ final class CodeIndexTools
     )]
     #[McpTool(
         name: 'kirby_snippets_index',
+        title: 'Snippets Index',
         description: 'Index Kirby snippets keyed by id (e.g. blocks/gallery). Defaults to a compact payload (no raw CLI stdout/stderr). Prefers runtime `kirby mcp:snippets` (includes plugin-registered snippets); falls back to filesystem scan when runtime commands are not installed. Supports idsOnly, fields selection, filters, and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Snippets Index',
@@ -307,6 +309,7 @@ final class CodeIndexTools
     )]
     #[McpTool(
         name: 'kirby_collections_index',
+        title: 'Collections Index',
         description: 'Index Kirby named collections keyed by id (e.g. articles/latest). Defaults to a compact payload (no raw CLI stdout/stderr). Prefers runtime `kirby mcp:collections` (includes plugin-registered collections); falls back to filesystem scan when runtime commands are not installed. Supports idsOnly, fields selection, filters, and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Collections Index',
@@ -435,6 +438,7 @@ final class CodeIndexTools
     )]
     #[McpTool(
         name: 'kirby_controllers_index',
+        title: 'Controllers Index',
         description: 'Index Kirby controllers keyed by id (e.g. album, album.json). Defaults to a compact payload (no raw CLI stdout/stderr). Prefers runtime `kirby mcp:controllers` (includes plugin-registered controllers); falls back to filesystem scan when runtime commands are not installed. Supports idsOnly, fields selection, filters, and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Controllers Index',
@@ -578,6 +582,7 @@ final class CodeIndexTools
     )]
     #[McpTool(
         name: 'kirby_models_index',
+        title: 'Models Index',
         description: 'Index registered Kirby page models keyed by id (e.g. default, article) with class + file path info. Prefers runtime `kirby mcp:models`; falls back to filesystem scan when runtime commands are not installed. Supports idsOnly, fields selection and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Models Index',
@@ -710,6 +715,7 @@ final class CodeIndexTools
     )]
     #[McpTool(
         name: 'kirby_plugins_index',
+        title: 'Plugins Index',
         description: 'Index loaded Kirby plugins keyed by id (runtime truth) via `kirby mcp:plugins` and enrich with common folder hints. Falls back to filesystem scan of roots.plugins (may include inactive plugins). Supports idsOnly, fields selection and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Plugins Index',

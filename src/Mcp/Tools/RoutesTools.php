@@ -47,6 +47,7 @@ final class RoutesTools
     )]
     #[McpTool(
         name: 'kirby_routes_index',
+        title: 'Routes Index',
         description: 'List registered Kirby routes with pattern/method/name and best-effort source location for the action callback. Requires `kirby_runtime_install` first.',
         annotations: new ToolAnnotations(
             title: 'Routes Index',

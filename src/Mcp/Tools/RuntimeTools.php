@@ -21,8 +21,8 @@ use Bnomei\KirbyMcp\Support\StaticCache;
 use Mcp\Capability\Attribute\Schema;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
-use Mcp\Schema\Elicitation\BooleanSchemaDefinition;
 use Mcp\Schema\Elicitation\ElicitationSchema;
+use Mcp\Schema\Elicitation\TitledEnumSchemaDefinition;
 use Mcp\Schema\Notification\ResourceUpdatedNotification;
 use Mcp\Schema\Result\CallToolResult;
 use Mcp\Schema\ToolAnnotations;
@@ -351,6 +351,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_runtime_install',
+        title: 'Install Runtime Commands',
         description: 'Install project-local Kirby CLI commands used by Kirby MCP (e.g. `mcp:render`) into the Kirby project. Run this once per project (writes to site/commands or commands.local).',
         annotations: new ToolAnnotations(
             title: 'Install Runtime Commands',
@@ -409,6 +410,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_runtime_status',
+        title: 'Runtime Status',
         description: 'Check whether project-local Kirby MCP runtime CLI command wrappers are installed (presence check against the package’s expected command files).',
         annotations: new ToolAnnotations(
             title: 'Runtime Status',
@@ -505,6 +507,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_render_page',
+        title: 'Render Page (CLI)',
         description: 'Render a Kirby page by id or uuid via the installed `kirby mcp:render` CLI command and return structured JSON (HTML + errors). Requires `kirby_runtime_install` first.',
         annotations: new ToolAnnotations(
             title: 'Render Page (CLI)',
@@ -584,6 +587,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_read_page_content',
+        title: 'Read Page Content',
         description: 'Read a page’s content (current version; drafts/changes-aware) by id or uuid via the installed `kirby mcp:page:content` CLI command. Requires kirby_runtime_install first. Resource template: `kirby://page/content/{encodedIdOrUuid}`.',
         annotations: new ToolAnnotations(
             title: 'Read Page Content',
@@ -652,6 +656,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_page_content',
+        title: 'Update Page Content',
         description: 'Update a page’s content by id or uuid via the installed `kirby mcp:page:update` CLI command. PREREQUISITE: Read `kirby://blueprint/page/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"title":"Hello","text":"..."}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$page->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update Page Content',
@@ -825,6 +830,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_read_site_content',
+        title: 'Read Site Content',
         description: 'Read the site’s content (current version) via the installed `kirby mcp:site:content` CLI command. Requires kirby_runtime_install first. Resource: `kirby://site/content`.',
         annotations: new ToolAnnotations(
             title: 'Read Site Content',
@@ -887,6 +893,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_read_file_content',
+        title: 'Read File Content',
         description: 'Read a file’s content/metadata by id or uuid via the installed `kirby mcp:file:content` CLI command. Requires kirby_runtime_install first. Resource template: `kirby://file/content/{encodedIdOrUuid}`.',
         annotations: new ToolAnnotations(
             title: 'Read File Content',
@@ -958,6 +965,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_read_user_content',
+        title: 'Read User Content',
         description: 'Read a user’s content by id or email via the installed `kirby mcp:user:content` CLI command. Requires kirby_runtime_install first. Resource template: `kirby://user/content/{encodedIdOrEmail}`.',
         annotations: new ToolAnnotations(
             title: 'Read User Content',
@@ -1032,6 +1040,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_site_content',
+        title: 'Update Site Content',
         description: 'Update the site’s content via the installed `kirby mcp:site:update` CLI command. PREREQUISITE: Read `kirby://blueprint/site/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"title":"Hello"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$site->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update Site Content',
@@ -1195,6 +1204,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_file_content',
+        title: 'Update File Content',
         description: 'Update a file’s content/metadata by id or uuid via the installed `kirby mcp:file:update` CLI command. PREREQUISITE: Read `kirby://blueprint/file/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"alt":"Hello"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$file->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update File Content',
@@ -1371,6 +1381,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_update_user_content',
+        title: 'Update User Content',
         description: 'Update a user’s content by id or email via the installed `kirby mcp:user:update` CLI command. PREREQUISITE: Read `kirby://blueprint/user/update-schema` plus `kirby://field/{type}/update-schema` for each field type before constructing payloads and set `payloadValidatedWithFieldSchemas=true`. `data` must be a JSON object mapping field keys to values (NOT an array), e.g. `{"city":"Berlin"}`. Pass the object directly (a JSON-encoded string is accepted for compatibility). It uses Kirby’s `$user->update($data, $language, $validate)` semantics. Recommended flow: call once with `confirm=false` to get a preview (`needsConfirm=true`, `updatedKeys`), then call again with `confirm=true` to actually write. Clients that support MCP elicitation may show an inline confirmation step; explicit `confirm=true` still works. Optional: `validate=true` to enforce blueprint rules; `language` to target a language. For field storage/payload guidance, see `kirby://fields/update-schema` and `kirby://field/{type}/update-schema`. See `kirby://tool-examples` for copy-ready inputs. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Update User Content',
@@ -1549,6 +1560,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_eval',
+        title: 'Eval (CLI)',
         description: 'Tinker/REPL (`tinker`): Execute PHP code in Kirby runtime via the installed `kirby mcp:eval` CLI command and return structured JSON (captured stdout + return value). Call it repeatedly like a REPL for quick inspection/debugging; tip: end with `return ...;` to capture a value. Disabled by default; enable via env `KIRBY_MCP_ENABLE_EVAL=1` or `.kirby-mcp/mcp.json` `{\"eval\":{\"enabled\":true}}`. Requires confirmation (`confirm=true` or client-side MCP elicitation) and kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Eval (CLI)',
@@ -1686,6 +1698,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_query_dot',
+        title: 'Query (Dot Notation)',
         description: 'Evaluate Kirby query language (dot-notation) strings in Kirby runtime via the installed `kirby mcp:query:dot` CLI command and return structured JSON. Enabled by default; disable via `.kirby-mcp/mcp.json` (`{\"query\":{\"enabled\":false}}`) and still requires confirmation (`confirm=true` or client-side MCP elicitation). Use `model` to set context (page id or UUID like `page://...`, `file://...`, `user://...`, user email, file path with extension, or `site`). See `kirby://glossary/query-language`. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Query (Dot Notation)',
@@ -1808,6 +1821,7 @@ final class RuntimeTools
     )]
     #[McpTool(
         name: 'kirby_blueprints_loaded',
+        title: 'Loaded Blueprints',
         description: 'List blueprint ids that Kirby knows about at runtime (extensions + filesystem). Defaults to idsOnly=true to avoid truncation; supports filters and pagination. Requires kirby_runtime_install first.',
         annotations: new ToolAnnotations(
             title: 'Loaded Blueprints',
@@ -1952,10 +1966,14 @@ final class RuntimeTools
                 trim($message),
                 new ElicitationSchema(
                     properties: [
-                        'confirm' => new BooleanSchemaDefinition(
+                        'confirm' => new TitledEnumSchemaDefinition(
                             title: 'Confirm execution',
-                            description: 'Set to true to execute now. Set to false to keep the dry-run response.',
-                            default: false,
+                            oneOf: [
+                                ['const' => 'execute', 'title' => 'Execute now'],
+                                ['const' => 'preview', 'title' => 'Keep dry-run preview'],
+                            ],
+                            description: 'Choose whether to execute now or keep the dry-run response.',
+                            default: 'preview',
                         ),
                     ],
                     required: ['confirm'],
@@ -1978,7 +1996,9 @@ final class RuntimeTools
             return false;
         }
 
-        return ($result->content['confirm'] ?? false) === true;
+        $confirm = $result->content['confirm'] ?? null;
+
+        return $confirm === 'execute' || $confirm === true;
     }
 
     /**

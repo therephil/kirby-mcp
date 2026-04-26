@@ -14,6 +14,7 @@ final class KirbyPerformanceAuditPrompt
      */
     #[McpPrompt(
         name: 'kirby_performance_audit',
+        title: 'Kirby Performance Audit',
         description: 'Guide an agent through a Kirby performance audit (cache + query pitfalls). Use before making performance-related changes.',
         meta: [
             'primaryTools' => [

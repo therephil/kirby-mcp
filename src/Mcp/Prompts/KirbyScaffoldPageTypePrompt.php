@@ -14,6 +14,7 @@ final class KirbyScaffoldPageTypePrompt
      */
     #[McpPrompt(
         name: 'kirby_scaffold_page_type',
+        title: 'Kirby Scaffold Page Type',
         description: 'Scaffold a new Kirby page type (blueprint + template, optional controller/page model) using project roots and conventions.',
         meta: [
             'primaryTools' => [

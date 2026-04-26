@@ -55,6 +55,7 @@ final class MetaTools
     )]
     #[McpTool(
         name: 'kirby_tool_suggest',
+        title: 'Suggest Tools & Resources',
         description: 'Suggest the best next Kirby MCP tool/resource for a task using a weighted keyword matcher. Suggestions can include tools, resources (`kirby://...`), and resource templates (`kirby://.../{param}`). Use this when you are unsure what to call/read next. Resource: `kirby://tools`.',
         annotations: new ToolAnnotations(
             title: 'Suggest Tools & Resources',

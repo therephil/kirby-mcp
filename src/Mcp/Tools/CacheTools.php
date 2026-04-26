@@ -48,6 +48,7 @@ final class CacheTools
     )]
     #[McpTool(
         name: 'kirby_cache_clear',
+        title: 'Clear Cache',
         description: 'Clear in-memory caches for the current MCP process (StaticCache, config cache, composer cache, roots cache, tool index). This does not delete any project files.',
         annotations: new ToolAnnotations(
             title: 'Clear Cache',

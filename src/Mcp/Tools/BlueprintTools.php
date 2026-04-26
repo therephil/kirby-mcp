@@ -55,6 +55,7 @@ final class BlueprintTools
     )]
     #[McpTool(
         name: 'kirby_blueprints_index',
+        title: 'Blueprints Index',
         description: 'Index Kirby blueprints keyed by id (e.g. pages/home). Default is a small summary (no full data, no raw CLI output) and includes derived displayName (title/name/label) plus source info (file vs extension override). Prefers runtime `kirby mcp:blueprints` (includes plugin-registered blueprints); falls back to filesystem scan when runtime commands are not installed. Supports idsOnly, fields selection, filters, and pagination to avoid truncation.',
         annotations: new ToolAnnotations(
             title: 'Blueprints Index',
@@ -348,6 +349,7 @@ final class BlueprintTools
     )]
     #[McpTool(
         name: 'kirby_blueprint_read',
+        title: 'Blueprint Read',
         description: 'Read a single Kirby blueprint by id (e.g. pages/home). Prefers runtime `kirby mcp:blueprint` (includes plugin-registered blueprints) and returns structured JSON. Use withData=false to omit the large data payload and avoid truncation. Set debug=true to include CLI stdout/stderr. Resource template: `kirby://blueprint/{encodedId}`.',
         annotations: new ToolAnnotations(
             title: 'Blueprint Read',

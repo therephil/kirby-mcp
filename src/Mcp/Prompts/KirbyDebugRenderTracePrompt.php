@@ -14,6 +14,7 @@ final class KirbyDebugRenderTracePrompt
      */
     #[McpPrompt(
         name: 'kirby_debug_render_trace',
+        title: 'Kirby Debug Render Trace',
         description: 'Debug by reproducing via kirby_render_page and inspecting mcp_dump traces via kirby_dump_log_tail.',
         meta: [
             'requiresRuntimeInstall' => true,

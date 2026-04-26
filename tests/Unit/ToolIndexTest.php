@@ -53,6 +53,11 @@ it('indexes tools and resources via #[McpToolIndex]', function (): void {
                     $mcpTool = $mcpToolAttributes[0]->newInstance();
                     $expectedNames[] = $mcpTool->name;
 
+                    expect($mcpTool->title)->toBeString()->not()->toBe('');
+                    if (is_object($mcpTool->annotations) && is_string($mcpTool->annotations->title)) {
+                        expect($mcpTool->title)->toBe($mcpTool->annotations->title);
+                    }
+
                     if ($indexAttributes === []) {
                         $missingIndex[] = $class . '::' . $method->getName() . ' (' . $mcpTool->name . ')';
                     }

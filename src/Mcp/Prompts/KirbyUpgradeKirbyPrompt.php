@@ -14,6 +14,7 @@ final class KirbyUpgradeKirbyPrompt
      */
     #[McpPrompt(
         name: 'kirby_upgrade_kirby',
+        title: 'Kirby Upgrade',
         description: 'Upgrade Kirby safely (official docs + composer + verification).',
         meta: [
             'primaryTools' => [

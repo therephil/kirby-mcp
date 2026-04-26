@@ -85,7 +85,10 @@ final class ToolIndex
                             continue;
                         }
 
-                        $title = is_object($mcpTool->annotations) && is_string($mcpTool->annotations->title) && $mcpTool->annotations->title !== ''
+                        $title = is_string($mcpTool->title) && trim($mcpTool->title) !== ''
+                            ? trim($mcpTool->title)
+                            : null;
+                        $title ??= is_object($mcpTool->annotations) && is_string($mcpTool->annotations->title) && $mcpTool->annotations->title !== ''
                             ? $mcpTool->annotations->title
                             : $name;
 

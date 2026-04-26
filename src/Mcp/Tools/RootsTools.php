@@ -56,6 +56,7 @@ final class RootsTools
     )]
     #[McpTool(
         name: 'kirby_roots',
+        title: 'Kirby Roots',
         description: 'Return Kirby’s resolved folder roots (kirby()->roots) via `kirby roots`. Uses configured default host (KIRBY_MCP_HOST/KIRBY_HOST or .kirby-mcp/mcp.json) when present. Resource: `kirby://roots`.',
         annotations: new ToolAnnotations(
             title: 'Kirby Roots',

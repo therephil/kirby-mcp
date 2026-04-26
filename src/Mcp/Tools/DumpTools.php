@@ -47,6 +47,7 @@ final class DumpTools
     )]
     #[McpTool(
         name: 'kirby_dump_log_tail',
+        title: 'Dump Log Tail',
         description: 'Tail `.kirby-mcp/dumps.jsonl` written by `mcp_dump()` and return structured JSON. Filters: `traceId`, `path`. `limit=0` returns all.',
         annotations: new ToolAnnotations(
             title: 'Dump Log Tail',

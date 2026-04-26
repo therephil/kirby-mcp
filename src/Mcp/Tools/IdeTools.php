@@ -82,6 +82,7 @@ final class IdeTools
     )]
     #[McpTool(
         name: 'kirby_generate_ide_helpers',
+        title: 'Generate IDE Helpers',
         description: 'Generate IDE helper files (optional/regeneratable) from project context (blueprints, indexes). Writes to `.kirby-mcp/` by default. Use `kirby_ide_helpers_status` to check freshness and missing PHPDoc hints.',
         annotations: new ToolAnnotations(
             title: 'Generate IDE Helpers',
@@ -426,6 +427,7 @@ final class IdeTools
     )]
     #[McpTool(
         name: 'kirby_ide_helpers_status',
+        title: 'IDE Helpers Status',
         description: 'Report IDE helper status (missing template/snippet PHPDoc @var hints + helper file freshness using mtimes). Designed to keep LLMs tool-first and avoid stale static helpers.',
         annotations: new ToolAnnotations(
             title: 'IDE Helpers Status',

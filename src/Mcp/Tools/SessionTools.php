@@ -53,6 +53,7 @@ final class SessionTools
     )]
     #[McpTool(
         name: 'kirby_init',
+        title: 'Kirby Init',
         description: 'Return Kirby MCP session guidance + project-specific audit (composer + environment). Call this once per session before using other Kirby tools.',
         annotations: new ToolAnnotations(
             title: 'Kirby Init',
