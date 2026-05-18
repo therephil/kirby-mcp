@@ -9,6 +9,7 @@ use Bnomei\KirbyMcp\Mcp\ToolIndex;
 use Bnomei\KirbyMcp\Mcp\SessionState;
 use Bnomei\KirbyMcp\Mcp\Tools\Concerns\StructuredToolResult;
 use Mcp\Capability\Attribute\McpTool;
+use Mcp\Capability\Attribute\Schema;
 use Mcp\Schema\Result\CallToolResult;
 use Mcp\Schema\ToolAnnotations;
 use Mcp\Server\RequestContext;
@@ -22,7 +23,7 @@ final class MetaTools
      *
      * Provide either a free-form query or explicit keywords; the tool returns a ranked list with a score and a short “when to use”.
      *
-     * @param array<int, mixed> $keywords
+     * @param array<int, string> $keywords
      * @return array{
      *   query: string|null,
      *   keywords: array<int, string>,
@@ -65,6 +66,7 @@ final class MetaTools
     )]
     public function suggestTools(
         ?string $query = null,
+        #[Schema(items: ['type' => 'string'])]
         array $keywords = [],
         int $limit = 8,
         ?RequestContext $context = null,

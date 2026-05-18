@@ -18,6 +18,7 @@ use Bnomei\KirbyMcp\Mcp\Tools\Concerns\StructuredToolResult;
 use Bnomei\KirbyMcp\Support\IndexList;
 use Mcp\Capability\Attribute\CompletionProvider;
 use Mcp\Capability\Attribute\McpTool;
+use Mcp\Capability\Attribute\Schema;
 use Mcp\Exception\ToolCallException;
 use Mcp\Schema\Result\CallToolResult;
 use Mcp\Schema\ToolAnnotations;
@@ -35,6 +36,7 @@ final class BlueprintTools
     /**
      * Index blueprints (prefers runtime when installed).
      *
+     * @param array<int, string>|null $fields
      * @return array<string, mixed>
      */
     #[McpToolIndex(
@@ -66,6 +68,7 @@ final class BlueprintTools
     public function blueprintsIndex(
         bool $withData = false,
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         ?string $type = null,
         ?string $activeSource = null,

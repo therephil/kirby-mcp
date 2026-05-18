@@ -179,7 +179,20 @@ it('boots the MCP stdio server and answers initialize', function (): void {
         expect($dataType)->toBeArray();
         expect($dataType)->toContain('object');
         expect($dataType)->toContain('string');
+        expect($inputSchema['properties']['data']['additionalProperties'] ?? null)->toBeTrue();
     }
+
+    $arraySchemaViolations = [];
+    foreach ($byName as $toolName => $tool) {
+        $inputSchema = $tool['inputSchema'] ?? null;
+        if (!is_array($inputSchema)) {
+            continue;
+        }
+
+        collectArraySchemasWithoutItems($inputSchema, '#', $toolName, $arraySchemaViolations);
+    }
+
+    expect($arraySchemaViolations)->toBe([]);
 
     expect($byId)->toHaveKey('3');
     expect($byId['3'])->toHaveKey('result');
@@ -212,3 +225,30 @@ it('boots the MCP stdio server and answers initialize', function (): void {
     expect($meta)->toBeArray();
     expect($meta)->toHaveKey('lastModified');
 });
+
+/**
+ * @param array<string, mixed> $schema
+ * @param array<int, string> $violations
+ */
+function collectArraySchemasWithoutItems(array $schema, string $path, string $toolName, array &$violations): void
+{
+    $type = $schema['type'] ?? null;
+    $isArraySchema = $type === 'array' || (is_array($type) && in_array('array', $type, true));
+
+    if ($isArraySchema && !array_key_exists('items', $schema)) {
+        $violations[] = $toolName . ' ' . $path;
+    }
+
+    foreach ($schema as $key => $value) {
+        if (!is_array($value)) {
+            continue;
+        }
+
+        collectArraySchemasWithoutItems(
+            $value,
+            $path . '/' . (is_int($key) ? (string) $key : $key),
+            $toolName,
+            $violations,
+        );
+    }
+}

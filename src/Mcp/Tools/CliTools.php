@@ -14,6 +14,7 @@ use Bnomei\KirbyMcp\Mcp\Support\RuntimeCommands;
 use Bnomei\KirbyMcp\Project\KirbyMcpConfig;
 use Bnomei\KirbyMcp\Mcp\Tools\Concerns\StructuredToolResult;
 use Mcp\Capability\Attribute\McpTool;
+use Mcp\Capability\Attribute\Schema;
 use Mcp\Exception\ToolCallException;
 use Mcp\Schema\Result\CallToolResult;
 use Mcp\Schema\ToolAnnotations;
@@ -31,7 +32,7 @@ final class CliTools
     /**
      * Run a Kirby CLI command (raw stdout/stderr).
      *
-     * @param array<int, mixed> $arguments
+     * @param array<int, string> $arguments
      * @return array{
      *   ok: bool,
      *   projectRoot: string,
@@ -78,6 +79,7 @@ final class CliTools
     )]
     public function runCliCommand(
         string $command,
+        #[Schema(items: ['type' => 'string'])]
         array $arguments = [],
         bool $allowWrite = false,
         int $timeoutSeconds = 60,

@@ -5,6 +5,11 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-05-18
+
+- Fixed MCP tool input schemas for array parameters so strict OpenAI-compatible function-calling clients no longer reject `tools/list` results. thanks @ralphsun73221
+- Added regression coverage for missing `items` on array-typed tool input schemas and kept content update `data` schemas modeled as object-or-JSON-string inputs.
+
 ## [1.6.0] - 2026-05-18
 
 - Added an explicit `KirbyMcpRoute::handle()` adapter for copy-paste Kirby `/mcp` route integration, including PSR-7-to-Kirby response bridging for Streamable HTTP responses.

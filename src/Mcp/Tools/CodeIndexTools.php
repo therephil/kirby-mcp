@@ -15,6 +15,7 @@ use Bnomei\KirbyMcp\Project\RootsCodeIndexer;
 use Bnomei\KirbyMcp\Support\IndexList;
 use Bnomei\KirbyMcp\Mcp\Tools\Concerns\StructuredToolResult;
 use Mcp\Capability\Attribute\McpTool;
+use Mcp\Capability\Attribute\Schema;
 use Mcp\Exception\ToolCallException;
 use Mcp\Schema\Result\CallToolResult;
 use Mcp\Schema\ToolAnnotations;
@@ -30,6 +31,7 @@ final class CodeIndexTools
     }
 
     /**
+     * @param array<int, string>|null $fields
      * @return array<string, mixed>
      */
     #[McpToolIndex(
@@ -55,6 +57,7 @@ final class CodeIndexTools
     )]
     public function templatesIndex(
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         ?string $activeSource = null,
         bool $overriddenOnly = false,
@@ -163,6 +166,7 @@ final class CodeIndexTools
     }
 
     /**
+     * @param array<int, string>|null $fields
      * @return array<string, mixed>
      */
     #[McpToolIndex(
@@ -187,6 +191,7 @@ final class CodeIndexTools
     )]
     public function snippetsIndex(
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         ?string $activeSource = null,
         bool $overriddenOnly = false,
@@ -294,6 +299,7 @@ final class CodeIndexTools
     }
 
     /**
+     * @param array<int, string>|null $fields
      * @return array<string, mixed>
      */
     #[McpToolIndex(
@@ -319,6 +325,7 @@ final class CodeIndexTools
     )]
     public function collectionsIndex(
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         ?string $activeSource = null,
         bool $overriddenOnly = false,
@@ -426,6 +433,7 @@ final class CodeIndexTools
     }
 
     /**
+     * @param array<int, string>|null $fields
      * @return array<string, mixed>
      */
     #[McpToolIndex(
@@ -448,6 +456,7 @@ final class CodeIndexTools
     )]
     public function controllersIndex(
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         ?string $activeSource = null,
         bool $overriddenOnly = false,
@@ -556,6 +565,7 @@ final class CodeIndexTools
     }
 
     /**
+     * @param array<int, string>|null $fields
      * @return array{
      *   projectRoot: string,
      *   host: string|null,
@@ -592,6 +602,7 @@ final class CodeIndexTools
     )]
     public function modelsIndex(
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         int $limit = 0,
         int $cursor = 0,
@@ -674,6 +685,7 @@ final class CodeIndexTools
     }
 
     /**
+     * @param array<int, string>|null $fields
      * @return array{
      *   projectRoot: string,
      *   host: string|null,
@@ -725,6 +737,7 @@ final class CodeIndexTools
     )]
     public function pluginsIndex(
         bool $idsOnly = false,
+        #[Schema(items: ['type' => 'string'])]
         ?array $fields = null,
         int $limit = 0,
         int $cursor = 0,
