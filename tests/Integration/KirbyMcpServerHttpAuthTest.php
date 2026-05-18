@@ -1,0 +1,229 @@
+<?php
+
+declare(strict_types=1);
+
+use Bnomei\KirbyMcp\Mcp\Http\HttpAuthScopes;
+use Bnomei\KirbyMcp\Mcp\Http\SharedTokenValidator;
+use Bnomei\KirbyMcp\Mcp\HttpMcpTracer;
+use Bnomei\KirbyMcp\Mcp\ServerFactory;
+use GuzzleHttp\Psr7\HttpFactory;
+use Mcp\Server\Session\FileSessionStore;
+use Psr\Http\Message\ResponseInterface;
+
+function kirbyMcpHttpAuthJsonRequest(string $method, int|string|null $id = null, array $params = []): string
+{
+    $payload = [
+        'jsonrpc' => '2.0',
+        'method' => $method,
+        'params' => $params === [] ? new stdClass() : $params,
+    ];
+
+    if ($id !== null) {
+        $payload['id'] = $id;
+    }
+
+    if ($method === 'initialize') {
+        $payload['params'] = [
+            'protocolVersion' => '2024-11-05',
+            'capabilities' => new stdClass(),
+            'clientInfo' => [
+                'name' => 'tests',
+                'version' => 'dev',
+            ],
+        ];
+    }
+
+    return json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+}
+
+function kirbyMcpHttpAuthDecode(ResponseInterface $response): array
+{
+    $decoded = json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR);
+    expect($decoded)->toBeArray();
+
+    return $decoded;
+}
+
+/**
+ * @param list<string> $allowedOrigins
+ */
+function kirbyMcpHttpAuthTracer(?SharedTokenValidator $validator = null, array $allowedOrigins = []): HttpMcpTracer
+{
+    $sessionDir = sys_get_temp_dir() . '/kirby-mcp-http-auth-test-' . bin2hex(random_bytes(6));
+
+    return new HttpMcpTracer(
+        serverFactory: new ServerFactory(),
+        sessionStore: new FileSessionStore($sessionDir),
+        tokenValidator: $validator ?? new SharedTokenValidator('local-secret'),
+        allowedOrigins: $allowedOrigins,
+    );
+}
+
+it('rejects missing malformed invalid and query-string bearer credentials before MCP handling', function (): void {
+    $factory = new HttpFactory();
+    $tracer = kirbyMcpHttpAuthTracer();
+    $body = $factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1));
+
+    $missing = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($body)
+    );
+    expect($missing->getStatusCode())->toBe(401)
+        ->and($missing->getHeaderLine('WWW-Authenticate'))->toContain('Bearer')
+        ->and((string) $missing->getBody())->toContain('authorization_required');
+
+    $malformed = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Basic nope')
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1)))
+    );
+    expect($malformed->getStatusCode())->toBe(400)
+        ->and((string) $malformed->getBody())->toContain('invalid_request');
+
+    $invalid = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer wrong-secret')
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1)))
+    );
+    expect($invalid->getStatusCode())->toBe(401)
+        ->and((string) $invalid->getBody())->toContain('invalid_token');
+
+    $query = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp?access_token=local-secret')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer local-secret')
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1)))
+    );
+    expect($query->getStatusCode())->toBe(400)
+        ->and((string) $query->getBody())->toContain('Query-string credentials are not allowed.');
+});
+
+it('rejects disallowed Origin before auth and protocol handling', function (): void {
+    $factory = new HttpFactory();
+    $tracer = kirbyMcpHttpAuthTracer(allowedOrigins: ['http://allowed.example.test']);
+
+    $response = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Origin', 'http://blocked.example.test')
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1)))
+    );
+
+    expect($response->getStatusCode())->toBe(403)
+        ->and((string) $response->getBody())->toContain('Origin is not allowed.');
+});
+
+it('keeps tools discoverable but rejects calls when the bearer token lacks operation scope', function (): void {
+    $factory = new HttpFactory();
+    $tracer = kirbyMcpHttpAuthTracer(new SharedTokenValidator('read-token', [HttpAuthScopes::READ]));
+
+    $initialize = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1)))
+    );
+    expect($initialize->getStatusCode())->toBe(200);
+    $sessionId = $initialize->getHeaderLine('Mcp-Session-Id');
+
+    $tools = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withHeader('Mcp-Session-Id', $sessionId)
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('tools/list', 2)))
+    );
+    expect($tools->getStatusCode())->toBe(200);
+    $toolPayload = kirbyMcpHttpAuthDecode($tools);
+    $toolNames = array_map(static fn (array $tool): string => (string) ($tool['name'] ?? ''), $toolPayload['result']['tools'] ?? []);
+    expect($toolNames)->toContain('kirby_update_page_content')
+        ->and($toolNames)->toContain('kirby_eval')
+        ->and($toolNames)->toContain('kirby_cache_clear');
+
+    $writeCall = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withHeader('Mcp-Session-Id', $sessionId)
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('tools/call', 3, [
+                'name' => 'kirby_update_page_content',
+                'arguments' => new stdClass(),
+            ])))
+    );
+
+    expect($writeCall->getStatusCode())->toBe(403)
+        ->and($writeCall->getHeaderLine('WWW-Authenticate'))->toContain('insufficient_scope')
+        ->and((string) $writeCall->getBody())->toContain(HttpAuthScopes::WRITE);
+
+    $executeCall = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withHeader('Mcp-Session-Id', $sessionId)
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('tools/call', 4, [
+                'name' => 'kirby_eval',
+                'arguments' => [
+                    'code' => 'return 1;',
+                    'confirm' => true,
+                ],
+            ])))
+    );
+
+    expect($executeCall->getStatusCode())->toBe(403)
+        ->and((string) $executeCall->getBody())->toContain(HttpAuthScopes::EXECUTE);
+
+    $adminCall = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withHeader('Mcp-Session-Id', $sessionId)
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('tools/call', 5, [
+                'name' => 'kirby_cache_clear',
+                'arguments' => new stdClass(),
+            ])))
+    );
+
+    expect($adminCall->getStatusCode())->toBe(403)
+        ->and((string) $adminCall->getBody())->toContain(HttpAuthScopes::ADMIN);
+
+    $loggingCall = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withHeader('Mcp-Session-Id', $sessionId)
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('logging/setLevel', 6, [
+                'level' => 'debug',
+            ])))
+    );
+
+    expect($loggingCall->getStatusCode())->toBe(403)
+        ->and((string) $loggingCall->getBody())->toContain(HttpAuthScopes::ADMIN);
+});
+
+it('allows a valid scoped bearer token to initialize and call read operations', function (): void {
+    $factory = new HttpFactory();
+    $tracer = kirbyMcpHttpAuthTracer(new SharedTokenValidator('read-token', [HttpAuthScopes::READ]));
+
+    $initialize = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1)))
+    );
+    expect($initialize->getStatusCode())->toBe(200);
+
+    $resources = $tracer->handle(
+        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Authorization', 'Bearer read-token')
+            ->withHeader('Mcp-Session-Id', $initialize->getHeaderLine('Mcp-Session-Id'))
+            ->withBody($factory->createStream(kirbyMcpHttpAuthJsonRequest('resources/list', 2)))
+    );
+
+    expect($resources->getStatusCode())->toBe(200);
+    $payload = kirbyMcpHttpAuthDecode($resources);
+    expect($payload['result']['resources'] ?? [])->not()->toBeEmpty();
+});

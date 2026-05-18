@@ -38,6 +38,11 @@ function kirbyMcpHttpJsonRequest(string $method, int|string|null $id = null): st
     return json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 }
 
+function kirbyMcpHttpAuthorize(mixed $request): mixed
+{
+    return $request->withHeader('Authorization', 'Bearer local-secret');
+}
+
 /**
  * @return array<string, mixed>
  */
@@ -200,11 +205,11 @@ it('traces the MCP server over a single /mcp HTTP endpoint with reusable session
     $factory = new HttpFactory();
     $sessionDir = sys_get_temp_dir() . '/kirby-mcp-http-test-' . bin2hex(random_bytes(6));
     $sessionStore = new FileSessionStore($sessionDir);
-    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore);
+    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore, sharedToken: 'local-secret');
 
-    $initializeRequest = $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+    $initializeRequest = kirbyMcpHttpAuthorize($factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
         ->withHeader('Content-Type', 'application/json')
-        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('initialize', 1)));
+        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('initialize', 1))));
 
     $initializeResponse = $tracer->handle($initializeRequest);
     expect($initializeResponse->getStatusCode())->toBe(200);
@@ -214,33 +219,33 @@ it('traces the MCP server over a single /mcp HTTP endpoint with reusable session
     $initializePayload = kirbyMcpHttpDecodeResponse($initializeResponse);
     expect($initializePayload['result']['serverInfo']['name'] ?? null)->toBe('Kirby MCP');
 
-    $initializedRequest = $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+    $initializedRequest = kirbyMcpHttpAuthorize($factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
         ->withHeader('Content-Type', 'application/json')
         ->withHeader('Mcp-Session-Id', $sessionId)
-        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('notifications/initialized')));
+        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('notifications/initialized'))));
     expect($tracer->handle($initializedRequest)->getStatusCode())->toBe(202);
 
-    $toolsRequest = $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+    $toolsRequest = kirbyMcpHttpAuthorize($factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
         ->withHeader('Content-Type', 'application/json')
         ->withHeader('Mcp-Session-Id', $sessionId)
-        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('tools/list', 2)));
+        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('tools/list', 2))));
     $toolsResponse = $tracer->handle($toolsRequest);
     expect($toolsResponse->getStatusCode())->toBe(200);
     expect($toolsResponse->getHeaderLine('Mcp-Session-Id'))->toBe($sessionId);
     $toolsPayload = kirbyMcpHttpDecodeResponse($toolsResponse);
 
-    $resourcesRequest = $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+    $resourcesRequest = kirbyMcpHttpAuthorize($factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
         ->withHeader('Content-Type', 'application/json')
         ->withHeader('Mcp-Session-Id', $sessionId)
-        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('resources/list', 3)));
+        ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('resources/list', 3))));
     $resourcesResponse = $tracer->handle($resourcesRequest);
     expect($resourcesResponse->getStatusCode())->toBe(200);
     expect($resourcesResponse->getHeaderLine('Mcp-Session-Id'))->toBe($sessionId);
     $resourcesPayload = kirbyMcpHttpDecodeResponse($resourcesResponse);
 
     $getResponse = $tracer->handle(
-        $factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
-            ->withHeader('Mcp-Session-Id', $sessionId)
+        kirbyMcpHttpAuthorize($factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
+            ->withHeader('Mcp-Session-Id', $sessionId))
     );
     expect($getResponse->getStatusCode())->toBe(200);
     expect($getResponse->getHeaderLine('Content-Type'))->toStartWith('text/event-stream');
@@ -272,14 +277,14 @@ it('traces the MCP server over a single /mcp HTTP endpoint with reusable session
     }
 
     $deleteResponse = $tracer->handle(
-        $factory->createServerRequest('DELETE', 'http://127.0.0.1/mcp')
-            ->withHeader('Mcp-Session-Id', $sessionId)
+        kirbyMcpHttpAuthorize($factory->createServerRequest('DELETE', 'http://127.0.0.1/mcp')
+            ->withHeader('Mcp-Session-Id', $sessionId))
     );
     expect($deleteResponse->getStatusCode())->toBe(200);
 
     $afterDeleteResponse = $tracer->handle(
-        $factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
-            ->withHeader('Mcp-Session-Id', $sessionId)
+        kirbyMcpHttpAuthorize($factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
+            ->withHeader('Mcp-Session-Id', $sessionId))
     );
     expect($afterDeleteResponse->getStatusCode())->toBe(404);
 });
@@ -288,13 +293,13 @@ it('rejects malformed MCP session ids before delegating non-GET requests', funct
     $factory = new HttpFactory();
     $sessionDir = sys_get_temp_dir() . '/kirby-mcp-http-test-' . bin2hex(random_bytes(6));
     $sessionStore = new FileSessionStore($sessionDir);
-    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore);
+    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore, sharedToken: 'local-secret');
 
     foreach (['POST', 'DELETE'] as $method) {
-        $request = $factory->createServerRequest($method, 'http://127.0.0.1/mcp')
+        $request = kirbyMcpHttpAuthorize($factory->createServerRequest($method, 'http://127.0.0.1/mcp')
             ->withHeader('Mcp-Session-Id', 'not-a-uuid')
             ->withHeader('Content-Type', 'application/json')
-            ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('tools/list', 2)));
+            ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('tools/list', 2))));
 
         $response = $tracer->handle($request);
 
@@ -307,43 +312,47 @@ it('enforces Streamable HTTP session header semantics for missing and unknown se
     $factory = new HttpFactory();
     $sessionDir = sys_get_temp_dir() . '/kirby-mcp-http-test-' . bin2hex(random_bytes(6));
     $sessionStore = new FileSessionStore($sessionDir);
-    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore);
+    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore, sharedToken: 'local-secret');
     $unknownSessionId = '018f64a5-4690-7420-8c49-91609fdb78a8';
 
     $missingPostResponse = $tracer->handle(
-        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+        kirbyMcpHttpAuthorize(
+            $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('tools/list', 2)))
+        )
     );
     expect($missingPostResponse->getStatusCode())->toBe(400);
 
     $unknownPostResponse = $tracer->handle(
-        $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
+        kirbyMcpHttpAuthorize(
+            $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Mcp-Session-Id', $unknownSessionId)
             ->withBody($factory->createStream(kirbyMcpHttpJsonRequest('tools/list', 2)))
+        )
     );
     expect($unknownPostResponse->getStatusCode())->toBe(404);
 
     $missingGetResponse = $tracer->handle(
-        $factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
+        kirbyMcpHttpAuthorize($factory->createServerRequest('GET', 'http://127.0.0.1/mcp'))
     );
     expect($missingGetResponse->getStatusCode())->toBe(400);
 
     $unknownGetResponse = $tracer->handle(
-        $factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
-            ->withHeader('Mcp-Session-Id', $unknownSessionId)
+        kirbyMcpHttpAuthorize($factory->createServerRequest('GET', 'http://127.0.0.1/mcp')
+            ->withHeader('Mcp-Session-Id', $unknownSessionId))
     );
     expect($unknownGetResponse->getStatusCode())->toBe(404);
 
     $missingDeleteResponse = $tracer->handle(
-        $factory->createServerRequest('DELETE', 'http://127.0.0.1/mcp')
+        kirbyMcpHttpAuthorize($factory->createServerRequest('DELETE', 'http://127.0.0.1/mcp'))
     );
     expect($missingDeleteResponse->getStatusCode())->toBe(400);
 
     $unknownDeleteResponse = $tracer->handle(
-        $factory->createServerRequest('DELETE', 'http://127.0.0.1/mcp')
-            ->withHeader('Mcp-Session-Id', $unknownSessionId)
+        kirbyMcpHttpAuthorize($factory->createServerRequest('DELETE', 'http://127.0.0.1/mcp')
+            ->withHeader('Mcp-Session-Id', $unknownSessionId))
     );
     expect($unknownDeleteResponse->getStatusCode())->toBe(404);
 });
@@ -352,10 +361,24 @@ it('answers Streamable HTTP CORS preflight on the MCP endpoint', function (): vo
     $factory = new HttpFactory();
     $sessionDir = sys_get_temp_dir() . '/kirby-mcp-http-test-' . bin2hex(random_bytes(6));
     $sessionStore = new FileSessionStore($sessionDir);
-    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore);
+    $tracer = new HttpMcpTracer(new ServerFactory(), $sessionStore, sharedToken: 'local-secret');
+
+    $missingAuthResponse = $tracer->handle(
+        $factory->createServerRequest('OPTIONS', 'http://127.0.0.1/mcp')
+    );
+    expect($missingAuthResponse->getStatusCode())->toBe(401);
+
+    $queryCredentialResponse = $tracer->handle(
+        $factory->createServerRequest('OPTIONS', 'http://127.0.0.1/mcp?access_token=local-secret')
+    );
+    expect($queryCredentialResponse->getStatusCode())->toBe(400);
+    expect((string) $queryCredentialResponse->getBody())->toContain('Query-string credentials are not allowed.');
 
     $response = $tracer->handle(
         $factory->createServerRequest('OPTIONS', 'http://127.0.0.1/mcp')
+            ->withHeader('Authorization', 'Bearer local-secret')
+            ->withHeader('Origin', 'http://localhost:3000')
+            ->withHeader('Access-Control-Request-Method', 'POST')
     );
 
     expect($response->getStatusCode())->toBe(204);
@@ -450,7 +473,7 @@ it('starts the opt-in kirby-mcp http listener and serves /mcp', function (): voi
         throw new RuntimeException('Unable to connect to the local kirby-mcp http listener.');
     }
 
-    fwrite($client, "OPTIONS /mcp HTTP/1.1\r\nHost: 127.0.0.1:{$port}\r\nConnection: close\r\n\r\n");
+    fwrite($client, "OPTIONS /mcp HTTP/1.1\r\nHost: 127.0.0.1:{$port}\r\nAuthorization: Bearer local-secret\r\nConnection: close\r\n\r\n");
     $raw = stream_get_contents($client);
     fclose($client);
 

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Bnomei\KirbyMcp\Mcp;
 
+use Bnomei\KirbyMcp\Mcp\Http\HttpAuthFactory;
+use Bnomei\KirbyMcp\Project\KirbyMcpConfig;
+use Bnomei\KirbyMcp\Project\KirbyMcpHttpConfig;
 use GuzzleHttp\Psr7\HttpFactory;
 use Mcp\Server\Session\FileSessionStore;
 use Psr\Http\Message\ResponseInterface;
@@ -21,7 +24,7 @@ final class HttpMcpListener
     }
 
     /**
-     * @param array<int, string> $allowedOrigins
+     * @param list<string> $allowedOrigins
      */
     public function serve(
         string $host,
@@ -47,6 +50,21 @@ final class HttpMcpListener
         $sessionDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.kirby-mcp' . DIRECTORY_SEPARATOR . 'http-sessions';
         $sessionStore = new FileSessionStore($sessionDir);
         $factory = new HttpFactory();
+        $config = KirbyMcpConfig::load($projectRoot)->http();
+        $authFactory = new HttpAuthFactory();
+        $tokenValidator = null;
+        $protectedResourceMetadata = null;
+
+        if ($sharedToken !== null && $sharedToken !== '') {
+            $tokenValidator = $authFactory->sharedTokenValidator($sharedToken, $config->scopes);
+        } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_SHARED_TOKEN && is_string($config->sharedToken)) {
+            $sharedToken = $config->sharedToken;
+            $tokenValidator = $authFactory->sharedTokenValidator($sharedToken, $config->scopes);
+        } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_OAUTH && is_string($config->oauthIssuer) && is_string($config->oauthAudience)) {
+            $tokenValidator = $authFactory->oauthValidator($config);
+            $protectedResourceMetadata = $authFactory->metadata($config->oauthIssuer, $config->oauthAudience);
+        }
+
         $tracer = new HttpMcpTracer(
             serverFactory: $this->serverFactory,
             sessionStore: $sessionStore,
@@ -56,6 +74,8 @@ final class HttpMcpListener
             sharedToken: $sharedToken,
             allowedOrigins: $allowedOrigins,
             sseMaxSeconds: $sseMaxSeconds,
+            tokenValidator: $tokenValidator,
+            protectedResourceMetadata: $protectedResourceMetadata,
         );
 
         fwrite(STDERR, sprintf("Kirby MCP HTTP listening on http://%s:%d%s\n", $host, $port, $path));

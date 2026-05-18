@@ -49,4 +49,5 @@ Maintain a stable and secure MCP surface: tools, resources, and completions for 
 - Prefer SDK v0.5 titled enum elicitation schemas for choice-style client prompts; keep legacy explicit parameters (e.g. `confirm=true`) working.
 - Write tools that mutate content exposed via `kirby://...` resources should emit `notifications/resources/updated` for subscribed URIs (session-scoped subscriptions).
 - Resource list entries should include MCP `annotations` (audience + priority) and `_meta.lastModified` when the data source is known; size-bearing resources are registered manually by `src/Mcp/ServerFactory.php`.
+- HTTP `/mcp` requests are auth-gated before MCP protocol handling: validate Origin, reject query-string credentials, require Bearer auth, attach `oauth.*` request metadata, and enforce operation scopes without hiding tools/resources.
 - Keep init/info payloads lean; omit heavy blobs like `composer.lock` from tool/resource outputs (composer audit does not return lock data).
