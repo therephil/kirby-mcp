@@ -10,6 +10,8 @@ node_modules/
 .kirby-mcp/
 .mcp.json
 coverage.xml
+.orchid
+specs/
 
 !tests/fixture/.kirby-mcp/
 !tests/fixture/.kirby-mcp/**
