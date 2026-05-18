@@ -391,50 +391,75 @@ Start the server (point it at a composer-based Kirby project):
 
 ### HTTP transport (optional)
 
-Kirby MCP can also expose Streamable HTTP for clients that support an HTTP MCP URL.
-HTTP is disabled by default; `vendor/bin/kirby-mcp` continues to run the stdio transport
-unless you explicitly run the `http` subcommand and enable HTTP by environment variable or
-`.kirby-mcp/mcp.json`.
+Kirby MCP can expose Streamable HTTP for clients that support an HTTP MCP URL. HTTP is disabled
+by default; `vendor/bin/kirby-mcp` continues to run the stdio transport unless you explicitly add
+a Kirby route and enable HTTP in `.kirby-mcp/mcp.json` or environment variables.
 
-When enabled, the MCP endpoint is a single route:
-
-```text
-http://127.0.0.1:8765/mcp
-```
-
-All `/mcp` requests require `Authorization: Bearer ...`. Do not put credentials in query
-strings. The default bind host is `127.0.0.1`, Origin validation is enabled, and write/eval/query
-tools keep their existing confirmation and enablement gates.
-
-Shared-token mode is for local development only:
+For a Kirby route, install this package as a production dependency:
 
 ```bash
-KIRBY_MCP_HTTP_ENABLED=1 \
-KIRBY_MCP_HTTP_AUTH_MODE=shared-token \
-KIRBY_MCP_HTTP_TOKEN='replace-with-a-long-random-secret' \
-KIRBY_MCP_HTTP_ALLOWED_ORIGINS='http://127.0.0.1:3000' \
-vendor/bin/kirby-mcp http --project=/absolute/path/to/kirby-project
+composer require bnomei/kirby-mcp
 ```
 
-The global binary uses the same subcommand shape:
+Do not install it with `composer require --dev` if your `/mcp` route should work in production;
+the production PHP runtime must be able to autoload `Bnomei\KirbyMcp\Mcp\KirbyMcpRoute`.
 
-```bash
-kirby-mcp http --project=/absolute/path/to/kirby-project
+Add this route to your Kirby config, usually `site/config/config.php`:
+
+```php
+<?php
+
+use Bnomei\KirbyMcp\Mcp\KirbyMcpRoute;
+
+return [
+    'routes' => [
+        [
+            'pattern' => 'mcp',
+            'method' => 'GET|POST|DELETE|OPTIONS',
+            'action' => fn () => KirbyMcpRoute::handle(),
+        ],
+    ],
+];
 ```
 
-OAuth configuration fields are available for protected-resource metadata and JWT validation wiring,
-but the HTTP listener does not currently start in OAuth mode. Starting `kirby-mcp http` with
-`http.auth.mode=oauth` fails closed with "HTTP OAuth listener auth is not implemented yet"; use
-shared-token on loopback for the runnable local listener until OAuth listener support is completed.
+If your config already defines `routes`, add this entry to the existing routes array instead of
+replacing it. The route pattern must match `http.path`; the default `/mcp` path matches the
+`mcp` route above. No special Nginx location or `vendor/bin/kirby-mcp` proxy is required; the
+route runs inside Kirby’s normal PHP request lifecycle.
 
-Runnable shared-token project config:
+All `/mcp` requests require `Authorization: Bearer ...`. Do not put credentials in query strings.
+Origin validation runs before MCP protocol handling, tokens are scope-checked per operation, and
+write/eval/query tools keep their existing confirmation and enablement gates. If the route is
+registered but `http.enabled` is false, it returns 404.
+
+Production OAuth config:
 
 ```json
 {
   "http": {
     "enabled": true,
-    "host": "127.0.0.1",
-    "port": 8765,
+    "path": "/mcp",
+    "allowedOrigins": ["https://client.example"],
+    "auth": {
+      "mode": "oauth",
+      "issuer": "https://auth.example.test",
+      "audience": "https://example.test/mcp",
+      "jwksUri": "https://auth.example.test/.well-known/jwks.json",
+      "scopes": ["kirby-mcp:read", "kirby-mcp:runtime", "kirby-mcp:write", "kirby-mcp:execute", "kirby-mcp:admin"]
+    }
+  }
+}
+```
+
+OAuth mode validates JWT access tokens by issuer, audience/resource, JWKS signature, expiry, and
+operation scopes.
+
+Shared-token mode is for loopback local development only:
+
+```json
+{
+  "http": {
+    "enabled": true,
     "path": "/mcp",
     "allowedOrigins": ["http://127.0.0.1:3000"],
     "auth": {
@@ -446,21 +471,9 @@ Runnable shared-token project config:
 }
 ```
 
-Planned/partial OAuth config shape:
-
-```json
-{
-  "http": {
-    "auth": {
-      "mode": "oauth",
-      "issuer": "https://auth.example.test",
-      "audience": "https://example.test/mcp",
-      "jwksUri": "https://auth.example.test/.well-known/jwks.json",
-      "scopes": ["kirby-mcp:read", "kirby-mcp:runtime", "kirby-mcp:write", "kirby-mcp:execute", "kirby-mcp:admin"]
-    }
-  }
-}
-```
+The Kirby route rejects shared-token requests whose actual request host is not loopback. Use OAuth
+for public or non-loopback deployments. The route adapter does not use `http.host` or `http.port`;
+those fields only apply to the low-level `kirby-mcp http` listener/config check.
 
 HTTP tokens are scope-checked per operation. Available scope names are:
 
@@ -495,9 +508,9 @@ The agent can both check and generate IDE helpers for your project: `kirby_ide_h
 - `kirby_eval` is disabled by default; enable via `KIRBY_MCP_ENABLE_EVAL=1` or `.kirby-mcp/mcp.json` (`{"eval":{"enabled":true}}`) and still requires per-call confirmation (`confirm=true` or client-side elicitation).
 - `kirby_query_dot` is enabled by default; disable via `.kirby-mcp/mcp.json` (`{"query":{"enabled":false}}`) and still requires per-call confirmation (`confirm=true` or client-side elicitation).
 - HTTP transport is disabled by default and must never be exposed without Bearer-token authorization.
-- HTTP shared-token auth is limited to local development. Keep the token outside source control, bind to loopback, and use OAuth for production deployments.
+- HTTP shared-token auth is limited to local development. Keep the token outside source control; the Kirby route rejects shared-token requests on non-loopback hosts, and production deployments should use OAuth.
 - HTTP validates `Origin` before MCP protocol handling and rejects missing, malformed, expired, invalid, or insufficient-scope tokens before tool/resource side effects.
-- HTTP exposes only `/mcp` for MCP traffic. OAuth protected-resource metadata may be exposed for discovery when OAuth mode is configured.
+- HTTP exposes only the configured MCP route path, `/mcp` by default, for MCP traffic.
 
 ## What `install` / `update` change in your project
 
@@ -567,9 +580,9 @@ Kirby host selection:
 | `eval.enabled`          | `bool`     | `false`     | Enable `kirby_eval` / `kirby mcp:eval` (still requires explicit confirmation per call).                                                                                                                      |
 | `query.enabled`         | `bool`     | `true`      | Enable `kirby_query_dot` / `kirby mcp:query:dot` (still requires explicit confirmation per call).                                                                                                            |
 | `http.enabled`          | `bool`     | `false`     | Enable the optional Streamable HTTP MCP transport. Stdio remains the default when this is false or unset.                                                                                                    |
-| `http.host`             | `string`   | `127.0.0.1` | Bind host for HTTP mode. Non-loopback binds require production-grade OAuth configuration.                                                                                                                    |
-| `http.port`             | `int`      | `8765`      | Bind port for HTTP mode.                                                                                                                                                                                     |
-| `http.path`             | `string`   | `/mcp`      | Single MCP endpoint path for Streamable HTTP requests.                                                                                                                                                       |
+| `http.host`             | `string`   | `127.0.0.1` | Bind host for the low-level HTTP listener/config check. The Kirby route adapter uses the current request host and rejects shared-token auth on non-loopback requests.                                        |
+| `http.port`             | `int`      | `8765`      | Bind port for the low-level HTTP listener/config check. The Kirby route adapter does not use this field.                                                                                                     |
+| `http.path`             | `string`   | `/mcp`      | Single MCP endpoint path for Streamable HTTP requests. Match this with the copied Kirby route pattern.                                                                                                       |
 | `http.allowedOrigins`   | `string[]` | `[]`        | Allowed browser origins for HTTP mode. Configure the exact client origins you expect.                                                                                                                        |
 | `http.auth.mode`        | `string`   | `null`      | Required when HTTP is enabled: `oauth` for production-grade JWT validation or `shared-token` for loopback local development.                                                                                 |
 | `http.auth.token`       | `string`   | `null`      | Shared-token secret for local development. Prefer `KIRBY_MCP_HTTP_TOKEN` so secrets stay out of source control.                                                                                              |
@@ -589,9 +602,9 @@ Environment variables:
 | `KIRBY_MCP_ENABLE_EVAL`          | Enable eval override (takes precedence over config; still needs confirmation).       |
 | `KIRBY_MCP_ENABLE_QUERY`         | Enable query eval override (takes precedence over config; still needs confirmation). |
 | `KIRBY_MCP_HTTP_ENABLED`         | Enable optional HTTP transport (`1/0`, `true/false`, `on/off`).                      |
-| `KIRBY_MCP_HTTP_HOST`            | HTTP bind host; defaults to `127.0.0.1`.                                             |
-| `KIRBY_MCP_HTTP_PORT`            | HTTP bind port; defaults to `8765`.                                                  |
-| `KIRBY_MCP_HTTP_PATH`            | HTTP MCP endpoint path; defaults to `/mcp`.                                          |
+| `KIRBY_MCP_HTTP_HOST`            | HTTP bind host for the low-level listener/config check; defaults to `127.0.0.1`.     |
+| `KIRBY_MCP_HTTP_PORT`            | HTTP bind port for the low-level listener/config check; defaults to `8765`.          |
+| `KIRBY_MCP_HTTP_PATH`            | HTTP MCP endpoint path; defaults to `/mcp`; match this with the Kirby route pattern. |
 | `KIRBY_MCP_HTTP_ALLOWED_ORIGINS` | Comma-separated allowed origins for HTTP requests.                                   |
 | `KIRBY_MCP_HTTP_AUTH_MODE`       | HTTP auth mode: `oauth` or `shared-token`.                                           |
 | `KIRBY_MCP_HTTP_TOKEN`           | Shared-token bearer secret for loopback local development.                           |
