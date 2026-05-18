@@ -26,7 +26,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Symfony\Component\Uid\Uuid;
 
-final class HttpMcpTracer
+final class HttpMcpHandler
 {
     private const SESSION_HEADER = 'Mcp-Session-Id';
 

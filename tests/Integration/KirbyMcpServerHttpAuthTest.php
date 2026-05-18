@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Bnomei\KirbyMcp\Mcp\Http\HttpAuthScopes;
 use Bnomei\KirbyMcp\Mcp\Http\SharedTokenValidator;
-use Bnomei\KirbyMcp\Mcp\HttpMcpTracer;
+use Bnomei\KirbyMcp\Mcp\HttpMcpHandler;
 use Bnomei\KirbyMcp\Mcp\ServerFactory;
 use GuzzleHttp\Psr7\HttpFactory;
 use Mcp\Server\Session\FileSessionStore;
@@ -47,11 +47,11 @@ function kirbyMcpHttpAuthDecode(ResponseInterface $response): array
 /**
  * @param list<string> $allowedOrigins
  */
-function kirbyMcpHttpAuthTracer(?SharedTokenValidator $validator = null, array $allowedOrigins = []): HttpMcpTracer
+function kirbyMcpHttpAuthHandler(?SharedTokenValidator $validator = null, array $allowedOrigins = []): HttpMcpHandler
 {
     $sessionDir = sys_get_temp_dir() . '/kirby-mcp-http-auth-test-' . bin2hex(random_bytes(6));
 
-    return new HttpMcpTracer(
+    return new HttpMcpHandler(
         serverFactory: new ServerFactory(),
         sessionStore: new FileSessionStore($sessionDir),
         tokenValidator: $validator ?? new SharedTokenValidator('local-secret'),
@@ -61,10 +61,10 @@ function kirbyMcpHttpAuthTracer(?SharedTokenValidator $validator = null, array $
 
 it('rejects missing malformed invalid and query-string bearer credentials before MCP handling', function (): void {
     $factory = new HttpFactory();
-    $tracer = kirbyMcpHttpAuthTracer();
+    $handler = kirbyMcpHttpAuthHandler();
     $body = $factory->createStream(kirbyMcpHttpAuthJsonRequest('initialize', 1));
 
-    $missing = $tracer->handle(
+    $missing = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withBody($body)
@@ -73,7 +73,7 @@ it('rejects missing malformed invalid and query-string bearer credentials before
         ->and($missing->getHeaderLine('WWW-Authenticate'))->toContain('Bearer')
         ->and((string) $missing->getBody())->toContain('authorization_required');
 
-    $malformed = $tracer->handle(
+    $malformed = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Basic nope')
@@ -82,7 +82,7 @@ it('rejects missing malformed invalid and query-string bearer credentials before
     expect($malformed->getStatusCode())->toBe(400)
         ->and((string) $malformed->getBody())->toContain('invalid_request');
 
-    $invalid = $tracer->handle(
+    $invalid = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer wrong-secret')
@@ -91,7 +91,7 @@ it('rejects missing malformed invalid and query-string bearer credentials before
     expect($invalid->getStatusCode())->toBe(401)
         ->and((string) $invalid->getBody())->toContain('invalid_token');
 
-    $query = $tracer->handle(
+    $query = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp?access_token=local-secret')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer local-secret')
@@ -103,9 +103,9 @@ it('rejects missing malformed invalid and query-string bearer credentials before
 
 it('rejects disallowed Origin before auth and protocol handling', function (): void {
     $factory = new HttpFactory();
-    $tracer = kirbyMcpHttpAuthTracer(allowedOrigins: ['http://allowed.example.test']);
+    $handler = kirbyMcpHttpAuthHandler(allowedOrigins: ['http://allowed.example.test']);
 
-    $response = $tracer->handle(
+    $response = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Origin', 'http://blocked.example.test')
@@ -118,9 +118,9 @@ it('rejects disallowed Origin before auth and protocol handling', function (): v
 
 it('keeps tools discoverable but rejects calls when the bearer token lacks operation scope', function (): void {
     $factory = new HttpFactory();
-    $tracer = kirbyMcpHttpAuthTracer(new SharedTokenValidator('read-token', [HttpAuthScopes::READ]));
+    $handler = kirbyMcpHttpAuthHandler(new SharedTokenValidator('read-token', [HttpAuthScopes::READ]));
 
-    $initialize = $tracer->handle(
+    $initialize = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -129,7 +129,7 @@ it('keeps tools discoverable but rejects calls when the bearer token lacks opera
     expect($initialize->getStatusCode())->toBe(200);
     $sessionId = $initialize->getHeaderLine('Mcp-Session-Id');
 
-    $tools = $tracer->handle(
+    $tools = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -143,7 +143,7 @@ it('keeps tools discoverable but rejects calls when the bearer token lacks opera
         ->and($toolNames)->toContain('kirby_eval')
         ->and($toolNames)->toContain('kirby_cache_clear');
 
-    $writeCall = $tracer->handle(
+    $writeCall = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -158,7 +158,7 @@ it('keeps tools discoverable but rejects calls when the bearer token lacks opera
         ->and($writeCall->getHeaderLine('WWW-Authenticate'))->toContain('insufficient_scope')
         ->and((string) $writeCall->getBody())->toContain(HttpAuthScopes::WRITE);
 
-    $executeCall = $tracer->handle(
+    $executeCall = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -175,7 +175,7 @@ it('keeps tools discoverable but rejects calls when the bearer token lacks opera
     expect($executeCall->getStatusCode())->toBe(403)
         ->and((string) $executeCall->getBody())->toContain(HttpAuthScopes::EXECUTE);
 
-    $adminCall = $tracer->handle(
+    $adminCall = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -189,7 +189,7 @@ it('keeps tools discoverable but rejects calls when the bearer token lacks opera
     expect($adminCall->getStatusCode())->toBe(403)
         ->and((string) $adminCall->getBody())->toContain(HttpAuthScopes::ADMIN);
 
-    $loggingCall = $tracer->handle(
+    $loggingCall = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -205,9 +205,9 @@ it('keeps tools discoverable but rejects calls when the bearer token lacks opera
 
 it('allows a valid scoped bearer token to initialize and call read operations', function (): void {
     $factory = new HttpFactory();
-    $tracer = kirbyMcpHttpAuthTracer(new SharedTokenValidator('read-token', [HttpAuthScopes::READ]));
+    $handler = kirbyMcpHttpAuthHandler(new SharedTokenValidator('read-token', [HttpAuthScopes::READ]));
 
-    $initialize = $tracer->handle(
+    $initialize = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')
@@ -215,7 +215,7 @@ it('allows a valid scoped bearer token to initialize and call read operations', 
     );
     expect($initialize->getStatusCode())->toBe(200);
 
-    $resources = $tracer->handle(
+    $resources = $handler->handle(
         $factory->createServerRequest('POST', 'http://127.0.0.1/mcp')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('Authorization', 'Bearer read-token')

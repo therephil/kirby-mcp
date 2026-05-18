@@ -65,7 +65,7 @@ final class HttpMcpListener
             $protectedResourceMetadata = $authFactory->metadata($config->oauthIssuer, $config->oauthAudience);
         }
 
-        $tracer = new HttpMcpTracer(
+        $handler = new HttpMcpHandler(
             serverFactory: $this->serverFactory,
             sessionStore: $sessionStore,
             path: $path,
@@ -94,7 +94,7 @@ final class HttpMcpListener
                 continue;
             }
 
-            $response = $tracer->handle($request);
+            $response = $handler->handle($request);
             if (
                 $once === false
                 && $this->isEventStream($response)

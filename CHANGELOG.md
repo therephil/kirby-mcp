@@ -5,6 +5,14 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-05-18
+
+- Added an opt-in `kirby-mcp http` listener for a Streamable HTTP MCP endpoint at `/mcp`; stdio remains the default transport.
+- Added file-backed HTTP MCP sessions, GET SSE delivery, POST JSON-RPC handling, DELETE session cleanup, and authenticated CORS preflight support.
+- Added mandatory Bearer auth for HTTP, shared-token loopback mode, query-string credential rejection, Origin validation, OAuth protected-resource metadata wiring, and per-operation scope enforcement.
+- Documented HTTP configuration, security defaults, validation commands, and the current fail-closed OAuth listener limitation.
+- Renamed the internal HTTP request handler from `HttpMcpTracer` to `HttpMcpHandler`.
+
 ## [1.5.0] - 2026-04-26
 
 - Updated MCP PHP SDK dependency to `mcp/sdk` v0.5.0.
