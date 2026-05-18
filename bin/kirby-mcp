@@ -30,6 +30,7 @@ use Bnomei\KirbyMcp\Install\RuntimeCommandsInstaller;
 use Bnomei\KirbyMcp\Mcp\ServerFactory;
 use Bnomei\KirbyMcp\Mcp\Tools\IdeTools;
 use Bnomei\KirbyMcp\Mcp\Support\JsonMarkers;
+use Bnomei\KirbyMcp\Project\KirbyMcpConfig;
 use Bnomei\KirbyMcp\Project\ProjectRootFinder;
 use Mcp\Server;
 use Mcp\Server\Transport\StdioTransport;
@@ -46,7 +47,7 @@ for ($index = 1; $index < count($argv); $index++) {
         continue;
     }
 
-    if ($arg === 'install' || $arg === 'update' || $arg === 'ide:status' || $arg === 'ide:generate') {
+    if ($arg === 'install' || $arg === 'update' || $arg === 'ide:status' || $arg === 'ide:generate' || $arg === 'http') {
         $subcommand = $arg;
         continue;
     }
@@ -136,6 +137,16 @@ if ($subcommand === 'install' || $subcommand === 'update') {
                 ],
                 'ide' => [
                     'typeHintScanBytes' => 16384,
+                ],
+                'http' => [
+                    'enabled' => false,
+                    'host' => '127.0.0.1',
+                    'port' => 8765,
+                    'path' => '/mcp',
+                    'allowedOrigins' => [],
+                    'auth' => [
+                        'mode' => null,
+                    ],
                 ],
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
@@ -477,6 +488,76 @@ if ($subcommand === 'ide:status' || $subcommand === 'ide:generate') {
         fwrite(STDERR, "Kirby MCP {$subcommand} failed: " . $exception->getMessage() . "\n");
         exit(1);
     }
+}
+
+if ($subcommand === 'http') {
+    $root = getenv('KIRBY_MCP_PROJECT_ROOT');
+    $root = is_string($root) && $root !== '' ? $root : null;
+
+    if ($root === null) {
+        $detected = (new ProjectRootFinder())->findKirbyProjectRoot();
+        $root = is_string($detected) && $detected !== '' ? $detected : null;
+    }
+
+    if ($root === null) {
+        fwrite(STDERR, "Kirby MCP: unable to determine Kirby project root. Use --project=/path/to/kirby-project.\n");
+        exit(1);
+    }
+
+    putenv('KIRBY_MCP_PROJECT_ROOT=' . $root);
+
+    $json = in_array('--json', $argv, true);
+    $check = in_array('--check', $argv, true) || in_array('--dry-run', $argv, true);
+    $config = KirbyMcpConfig::load($root)->http();
+    $errors = $config->validationErrors();
+    $commandErrors = $errors;
+
+    if ($check === false) {
+        $commandErrors[] = 'HTTP listener startup is not implemented yet; run with --check to validate configuration.';
+    }
+
+    $payload = [
+        'ok' => $commandErrors === [],
+        'command' => 'http',
+        'projectRoot' => $root,
+        'check' => $check,
+        'http' => [
+            'enabled' => $config->enabled,
+            'host' => $config->host,
+            'port' => $config->port,
+            'path' => $config->path,
+            'allowedOrigins' => $config->allowedOrigins,
+            'authMode' => $config->authMode,
+            'sharedTokenConfigured' => is_string($config->sharedToken) && $config->sharedToken !== '',
+            'oauthIssuer' => $config->oauthIssuer,
+            'oauthAudience' => $config->oauthAudience,
+            'oauthJwksUri' => $config->oauthJwksUri,
+            'scopes' => $config->scopes,
+        ],
+        'errors' => $commandErrors,
+    ];
+
+    if ($json === true) {
+        echo JsonMarkers::START . "\n";
+        echo json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+        echo JsonMarkers::END . "\n";
+        exit($payload['ok'] === true ? 0 : 1);
+    }
+
+    echo "Kirby MCP http\n";
+    echo "Project: {$root}\n";
+    echo "Enabled: " . ($config->enabled ? 'yes' : 'no') . "\n";
+    echo "Endpoint: http://{$config->host}:{$config->port}{$config->path}\n";
+    echo "Auth: " . ($config->authMode ?? 'not configured') . "\n";
+
+    if ($commandErrors !== []) {
+        echo "Errors:\n";
+        foreach ($commandErrors as $error) {
+            echo "- {$error}\n";
+        }
+    }
+
+    exit($payload['ok'] === true ? 0 : 1);
 }
 
 $server = (new ServerFactory())->create();

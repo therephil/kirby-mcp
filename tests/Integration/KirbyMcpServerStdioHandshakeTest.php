@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Symfony\Component\Process\Process;
+use Composer\InstalledVersions;
 
 it('boots the MCP stdio server and answers initialize', function (): void {
     $bin = realpath(__DIR__ . '/../../bin/kirby-mcp');
@@ -86,7 +87,8 @@ it('boots the MCP stdio server and answers initialize', function (): void {
 
     $serverInfo = $byId['1']['result']['serverInfo'];
     $composerJson = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'composer.json';
-    $expectedVersion = '0.0.0';
+    $composerVersion = null;
+    $expectedVersion = null;
     if (is_file($composerJson)) {
         $contents = file_get_contents($composerJson);
         if (is_string($contents) && trim($contents) !== '') {
@@ -94,15 +96,41 @@ it('boots the MCP stdio server and answers initialize', function (): void {
             if (is_array($decoded)) {
                 $version = $decoded['version'] ?? null;
                 if (is_string($version) && trim($version) !== '') {
-                    $expectedVersion = trim($version);
+                    $composerVersion = trim($version);
                 }
             }
         }
     }
 
+    if (class_exists(InstalledVersions::class)) {
+        try {
+            if (InstalledVersions::isInstalled('bnomei/kirby-mcp')) {
+                $pretty = InstalledVersions::getPrettyVersion('bnomei/kirby-mcp');
+                $reference = InstalledVersions::getReference('bnomei/kirby-mcp');
+
+                if (is_string($pretty) && $pretty !== '') {
+                    $isDev = str_starts_with($pretty, 'dev-') || $pretty === 'dev-main' || $pretty === 'dev-master';
+                    if ($isDev && is_string($composerVersion) && $composerVersion !== '') {
+                        $expectedVersion = $composerVersion;
+                    } else {
+                        $expectedVersion = $pretty;
+                    }
+
+                    if (is_string($reference) && $reference !== '') {
+                        $expectedVersion .= '+' . substr($reference, 0, 7);
+                    }
+                }
+            }
+        } catch (Throwable) {
+            // Fall through to the same file-based fallback used by the server factory.
+        }
+    }
+
+    $expectedVersion ??= $composerVersion ?? '0.0.0';
+
     expect($serverInfo)->toHaveKey('version');
     expect($serverInfo['version'])->toBeString();
-    expect(str_starts_with($serverInfo['version'], $expectedVersion))->toBeTrue();
+    expect($serverInfo['version'])->toBe($expectedVersion);
 
     $capabilities = $byId['1']['result']['capabilities'] ?? null;
     expect($capabilities)->toBeArray();

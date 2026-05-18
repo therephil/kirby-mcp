@@ -139,3 +139,55 @@ it('supports vendor/bin-style ide:generate command', function (): void {
     expect($decoded)->toHaveKey('files');
     expect($decoded)->toHaveKey('stats');
 });
+
+it('exposes an explicit HTTP config check without changing normal bin commands', function (): void {
+    $bin = realpath(__DIR__ . '/../../bin/kirby-mcp');
+    expect($bin)->not()->toBeFalse();
+
+    $projectRoot = cmsPath();
+
+    $process = new Process(
+        command: [PHP_BINARY, $bin, 'http', '--project=' . $projectRoot, '--check', '--json'],
+        cwd: dirname(__DIR__, 2),
+        timeout: 60,
+    );
+
+    $process->run();
+
+    expect($process->getExitCode())->toBe(0);
+
+    $decoded = McpMarkedJsonExtractor::extract($process->getOutput());
+    expect($decoded)->toBeArray();
+    expect($decoded)->toHaveKey('ok', true);
+    expect($decoded)->toHaveKey('command', 'http');
+    expect($decoded['http'])->toHaveKey('enabled', false);
+    expect($decoded['http'])->toHaveKey('host', '127.0.0.1');
+    expect($decoded['http'])->toHaveKey('path', '/mcp');
+});
+
+it('does not report HTTP startup success before the listener is implemented', function (): void {
+    $bin = realpath(__DIR__ . '/../../bin/kirby-mcp');
+    expect($bin)->not()->toBeFalse();
+
+    $projectRoot = cmsPath();
+
+    $process = new Process(
+        command: [PHP_BINARY, $bin, 'http', '--project=' . $projectRoot, '--json'],
+        cwd: dirname(__DIR__, 2),
+        env: [
+            'KIRBY_MCP_HTTP_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_AUTH_MODE' => 'shared-token',
+            'KIRBY_MCP_HTTP_TOKEN' => 'local-secret',
+        ],
+        timeout: 60,
+    );
+
+    $process->run();
+
+    expect($process->getExitCode())->toBe(1);
+
+    $decoded = McpMarkedJsonExtractor::extract($process->getOutput());
+    expect($decoded)->toBeArray();
+    expect($decoded)->toHaveKey('ok', false);
+    expect($decoded['errors'])->toContain('HTTP listener startup is not implemented yet; run with --check to validate configuration.');
+});

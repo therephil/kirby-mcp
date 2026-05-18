@@ -332,6 +332,47 @@ final readonly class KirbyMcpConfig
         return max(1024, min(1048576, $bytes));
     }
 
+    public function http(): KirbyMcpHttpConfig
+    {
+        $http = $this->data['http'] ?? null;
+        $http = is_array($http) ? $http : [];
+        $auth = $http['auth'] ?? null;
+        $auth = is_array($auth) ? $auth : [];
+
+        return new KirbyMcpHttpConfig(
+            enabled: $this->envBool('KIRBY_MCP_HTTP_ENABLED')
+                ?? $this->boolValue($http['enabled'] ?? null)
+                ?? KirbyMcpHttpConfig::DEFAULT_ENABLED,
+            host: $this->envString('KIRBY_MCP_HTTP_HOST')
+                ?? $this->stringValue($http['host'] ?? null)
+                ?? KirbyMcpHttpConfig::DEFAULT_HOST,
+            port: $this->envInt('KIRBY_MCP_HTTP_PORT')
+                ?? $this->intValue($http['port'] ?? null)
+                ?? KirbyMcpHttpConfig::DEFAULT_PORT,
+            path: $this->normalizeHttpPath(
+                $this->envString('KIRBY_MCP_HTTP_PATH')
+                    ?? $this->stringValue($http['path'] ?? null)
+                    ?? KirbyMcpHttpConfig::DEFAULT_PATH,
+            ),
+            allowedOrigins: $this->envStringList('KIRBY_MCP_HTTP_ALLOWED_ORIGINS')
+                ?? $this->stringList($http['allowedOrigins'] ?? $http['allowed_origins'] ?? null),
+            authMode: $this->normalizeAuthMode(
+                $this->envString('KIRBY_MCP_HTTP_AUTH_MODE')
+                    ?? $this->stringValue($auth['mode'] ?? null),
+            ),
+            sharedToken: $this->envString('KIRBY_MCP_HTTP_TOKEN')
+                ?? $this->stringValue($auth['token'] ?? $auth['sharedToken'] ?? null),
+            oauthIssuer: $this->envString('KIRBY_MCP_HTTP_OAUTH_ISSUER')
+                ?? $this->stringValue($auth['issuer'] ?? null),
+            oauthAudience: $this->envString('KIRBY_MCP_HTTP_OAUTH_AUDIENCE')
+                ?? $this->stringValue($auth['audience'] ?? null),
+            oauthJwksUri: $this->envString('KIRBY_MCP_HTTP_OAUTH_JWKS_URI')
+                ?? $this->stringValue($auth['jwksUri'] ?? $auth['jwks_uri'] ?? null),
+            scopes: $this->envStringList('KIRBY_MCP_HTTP_SCOPES')
+                ?? $this->stringList($auth['scopes'] ?? null),
+        );
+    }
+
     /**
      * @return array<int, string>
      */
@@ -359,5 +400,101 @@ final readonly class KirbyMcpConfig
         sort($out);
 
         return $out;
+    }
+
+    private function envString(string $name): ?string
+    {
+        $value = getenv($name);
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function envBool(string $name): ?bool
+    {
+        return $this->boolValue($this->envString($name));
+    }
+
+    private function envInt(string $name): ?int
+    {
+        return $this->intValue($this->envString($name));
+    }
+
+    /**
+     * @return array<int, string>|null
+     */
+    private function envStringList(string $name): ?array
+    {
+        $value = $this->envString($name);
+        if ($value === null) {
+            return null;
+        }
+
+        return $this->stringList(explode(',', $value));
+    }
+
+    private function boolValue(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return $value !== 0;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['1', 'true', 'on', 'yes'], true)) {
+                return true;
+            }
+
+            if (in_array($normalized, ['0', 'false', 'off', 'no'], true)) {
+                return false;
+            }
+        }
+
+        return null;
+    }
+
+    private function intValue(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && trim($value) !== '' && ctype_digit(trim($value))) {
+            return (int) trim($value);
+        }
+
+        return null;
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function normalizeHttpPath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return KirbyMcpHttpConfig::DEFAULT_PATH;
+        }
+
+        return str_starts_with($path, '/') ? $path : '/' . $path;
+    }
+
+    private function normalizeAuthMode(?string $mode): ?string
+    {
+        if ($mode === null) {
+            return null;
+        }
+
+        $mode = strtolower(trim($mode));
+        if ($mode === 'shared' || $mode === 'token') {
+            return KirbyMcpHttpConfig::AUTH_MODE_SHARED_TOKEN;
+        }
+
+        return $mode;
     }
 }
