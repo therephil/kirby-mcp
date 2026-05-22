@@ -84,6 +84,7 @@ function kirbyMcpRouteWithHttpEnv(array $env, Closure $callback): mixed
         'KIRBY_MCP_HTTP_OAUTH_PROVIDER_CONSENT',
         'KIRBY_MCP_HTTP_OAUTH_PROVIDER_CONSENT_SNIPPET',
         'KIRBY_MCP_HTTP_SCOPES',
+        'KIRBY_MCP_PROJECT_ROOT',
     ];
 
     $previous = [];
@@ -133,6 +134,46 @@ function kirbyMcpRouteRemoveDirectory(string $path): void
     }
 
     @rmdir($path);
+}
+
+function kirbyMcpRouteLocation(Kirby\Http\Response $response): string
+{
+    $location = $response->headers()['Location'] ?? '';
+    $location = is_array($location) ? ($location[0] ?? '') : $location;
+
+    return (string) $location;
+}
+
+function kirbyMcpRouteCommitSession(App $app): void
+{
+    try {
+        $app->session()->commit();
+    } catch (Throwable) {
+        // Some route tests never start Kirby's session component.
+    }
+}
+
+/**
+ * @param array<string, mixed> $overrides
+ * @return array<string, mixed>
+ */
+function kirbyMcpRouteRegisterOAuthClient(HttpFactory $factory, string $projectRoot, array $overrides = []): array
+{
+    $request = $factory->createServerRequest('POST', 'https://example.test/mcp/oauth/register', [
+        'REMOTE_ADDR' => '203.0.113.10',
+    ])
+        ->withHeader('Content-Type', 'application/json')
+        ->withBody($factory->createStream(json_encode([
+            'client_name' => 'Claude Desktop',
+            'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+            'token_endpoint_auth_method' => 'none',
+            ...$overrides,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)));
+
+    $response = KirbyMcpOAuthRoute::handle($projectRoot, $request);
+    expect($response->code())->toBe(201);
+
+    return kirbyMcpRouteDecodeJson($response->body());
 }
 
 it('keeps the copied Kirby MCP route closed while HTTP is disabled', function (): void {
@@ -417,9 +458,7 @@ it('serves the built-in OAuth provider flow for Claude Desktop custom connectors
             ]);
             $authorizeResponse = KirbyMcpOAuthRoute::handle($projectRoot, $authorizeRequest);
             expect($authorizeResponse->code())->toBe(302);
-            $location = $authorizeResponse->headers()['Location'] ?? '';
-            $location = is_array($location) ? ($location[0] ?? '') : $location;
-            $location = (string) $location;
+            $location = kirbyMcpRouteLocation($authorizeResponse);
             expect($location)->toStartWith('https://claude.ai/api/mcp/auth_callback?');
             parse_str((string) parse_url($location, PHP_URL_QUERY), $redirectQuery);
             expect($redirectQuery['state'] ?? null)->toBe('state-123')
@@ -445,6 +484,21 @@ it('serves the built-in OAuth provider flow for Claude Desktop custom connectors
                 ->and($token['refresh_token'] ?? null)->toBeString()
                 ->and($token['scope'] ?? null)->toBe('kirby-mcp:read kirby-mcp:runtime');
 
+            $invalidRefreshRequest = $factory->createServerRequest('POST', 'https://example.test/mcp/oauth/token', [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ])
+                ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+                ->withBody($factory->createStream(http_build_query([
+                    'grant_type' => 'refresh_token',
+                    'client_id' => $client['client_id'],
+                    'refresh_token' => $token['refresh_token'],
+                    'scope' => 'not-a-scope',
+                ], '', '&', PHP_QUERY_RFC3986)));
+            $invalidRefreshResponse = KirbyMcpOAuthRoute::handle($projectRoot, $invalidRefreshRequest);
+            $invalidRefresh = kirbyMcpRouteDecodeJson($invalidRefreshResponse->body());
+            expect($invalidRefreshResponse->code())->toBe(400)
+                ->and($invalidRefresh['error'] ?? null)->toBe('invalid_scope');
+
             $mcpRequest = $factory->createServerRequest('POST', 'https://example.test/mcp', [
                 'REMOTE_ADDR' => '203.0.113.10',
             ])
@@ -458,6 +512,7 @@ it('serves the built-in OAuth provider flow for Claude Desktop custom connectors
                 ->and($mcpPayload['result']['serverInfo']['name'] ?? null)->toBe('Kirby MCP');
         });
     } finally {
+        kirbyMcpRouteCommitSession($app);
         $app->impersonate(null);
         if ($previousApp instanceof App) {
             App::instance($previousApp);
@@ -468,7 +523,161 @@ it('serves the built-in OAuth provider flow for Claude Desktop custom connectors
     }
 });
 
+it('preserves OAuth query params when explicit consent posts back for a logged-in user', function (): void {
+    $projectRoot = cmsPath();
+    $oauthStorage = $projectRoot . DIRECTORY_SEPARATOR . '.kirby-mcp' . DIRECTORY_SEPARATOR . 'oauth';
+    kirbyMcpRouteRemoveDirectory($oauthStorage);
+
+    $previousApp = App::instance(null, true);
+    $previousErrorHandlers = captureErrorHandlers();
+    $previousWhoops = App::$enableWhoops;
+    App::$enableWhoops = false;
+    $app = new App([
+        'roots' => [
+            'index' => $projectRoot,
+        ],
+    ]);
+    ensureUser($app, 'mcp-oauth-consent@example.com');
+    $app->impersonate('mcp-oauth-consent@example.com');
+
+    try {
+        kirbyMcpRouteWithHttpEnv([
+            'KIRBY_MCP_HTTP_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_AUTH_MODE' => 'oauth',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_CONSENT' => 'always',
+            'KIRBY_MCP_HTTP_SCOPES' => 'kirby-mcp:read,kirby-mcp:runtime',
+        ], function () use ($projectRoot): void {
+            $factory = new HttpFactory();
+            $client = kirbyMcpRouteRegisterOAuthClient($factory, $projectRoot, [
+                'scope' => 'kirby-mcp:read',
+            ]);
+            $verifier = str_repeat('b', 43);
+            $authorizeQuery = http_build_query([
+                'response_type' => 'code',
+                'client_id' => $client['client_id'],
+                'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+                'scope' => 'kirby-mcp:read',
+                'state' => 'manual-consent',
+                'resource' => 'https://example.test/mcp',
+                'code_challenge' => OAuthKeySet::base64Url(hash('sha256', $verifier, true)),
+                'code_challenge_method' => 'S256',
+            ], '', '&', PHP_QUERY_RFC3986);
+            $authorizeUrl = 'https://example.test/mcp/oauth/authorize?' . $authorizeQuery;
+
+            $authorizeResponse = KirbyMcpOAuthRoute::handle($projectRoot, $factory->createServerRequest('GET', $authorizeUrl, [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ]));
+            expect($authorizeResponse->code())->toBe(200);
+            expect(preg_match('/name="csrf" value="([^"]*)"/', $authorizeResponse->body(), $matches))->toBe(1);
+
+            $approveRequest = $factory->createServerRequest('POST', $authorizeUrl, [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ])
+                ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+                ->withBody($factory->createStream(http_build_query([
+                    'csrf' => html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8'),
+                    'approve' => '1',
+                ], '', '&', PHP_QUERY_RFC3986)));
+            $approveResponse = KirbyMcpOAuthRoute::handle($projectRoot, $approveRequest);
+            expect($approveResponse->code())->toBe(302);
+            parse_str((string) parse_url(kirbyMcpRouteLocation($approveResponse), PHP_URL_QUERY), $redirectQuery);
+            expect($redirectQuery['state'] ?? null)->toBe('manual-consent')
+                ->and($redirectQuery['code'] ?? null)->toBeString();
+        });
+    } finally {
+        kirbyMcpRouteCommitSession($app);
+        $app->impersonate(null);
+        if ($previousApp instanceof App) {
+            App::instance($previousApp);
+        }
+        App::$enableWhoops = $previousWhoops;
+        restoreErrorHandlers($previousErrorHandlers);
+        kirbyMcpRouteRemoveDirectory($oauthStorage);
+    }
+});
+
+it('rejects authorize scopes that exceed the registered OAuth client scope', function (): void {
+    $projectRoot = cmsPath();
+    $oauthStorage = $projectRoot . DIRECTORY_SEPARATOR . '.kirby-mcp' . DIRECTORY_SEPARATOR . 'oauth';
+    kirbyMcpRouteRemoveDirectory($oauthStorage);
+
+    try {
+        kirbyMcpRouteWithHttpEnv([
+            'KIRBY_MCP_HTTP_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_AUTH_MODE' => 'oauth',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_SCOPES' => 'kirby-mcp:read,kirby-mcp:runtime',
+        ], function () use ($projectRoot): void {
+            $factory = new HttpFactory();
+            $client = kirbyMcpRouteRegisterOAuthClient($factory, $projectRoot, [
+                'scope' => 'kirby-mcp:read',
+            ]);
+            $authorizeQuery = http_build_query([
+                'response_type' => 'code',
+                'client_id' => $client['client_id'],
+                'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+                'scope' => 'kirby-mcp:read kirby-mcp:runtime',
+                'state' => 'scope-check',
+                'resource' => 'https://example.test/mcp',
+                'code_challenge' => OAuthKeySet::base64Url(hash('sha256', str_repeat('c', 43), true)),
+                'code_challenge_method' => 'S256',
+            ], '', '&', PHP_QUERY_RFC3986);
+
+            $response = KirbyMcpOAuthRoute::handle($projectRoot, $factory->createServerRequest('GET', 'https://example.test/mcp/oauth/authorize?' . $authorizeQuery, [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ]));
+
+            expect($response->code())->toBe(302);
+            parse_str((string) parse_url(kirbyMcpRouteLocation($response), PHP_URL_QUERY), $redirectQuery);
+            expect($redirectQuery['state'] ?? null)->toBe('scope-check')
+                ->and($redirectQuery['error'] ?? null)->toBe('invalid_scope')
+                ->and($redirectQuery['error_description'] ?? '')->toContain('kirby-mcp:runtime');
+        });
+    } finally {
+        kirbyMcpRouteRemoveDirectory($oauthStorage);
+    }
+});
+
 it('decodes OAuth JSON request data from the raw PSR-7 body before parsed body data', function (): void {
+    $projectRoot = cmsPath();
+    $oauthStorage = $projectRoot . DIRECTORY_SEPARATOR . '.kirby-mcp' . DIRECTORY_SEPARATOR . 'oauth';
+    kirbyMcpRouteRemoveDirectory($oauthStorage);
+
+    try {
+        kirbyMcpRouteWithHttpEnv([
+            'KIRBY_MCP_HTTP_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_AUTH_MODE' => 'oauth',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_ENABLED' => '1',
+        ], function () use ($projectRoot): void {
+            $factory = new HttpFactory();
+            $request = $factory->createServerRequest('POST', 'https://example.test/mcp/oauth/register', [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ])
+                ->withHeader('Content-Type', 'application/json')
+                ->withParsedBody([
+                    'client_name' => 'Parsed Body Should Not Win',
+                    'redirect_uris' => ['https://wrong.example/callback'],
+                ])
+                ->withBody($factory->createStream(json_encode([
+                    'client_name' => 'Claude Desktop',
+                    'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+                    'token_endpoint_auth_method' => 'none',
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)));
+
+            $response = KirbyMcpOAuthRoute::handle($projectRoot, $request);
+            $payload = kirbyMcpRouteDecodeJson($response->body());
+
+            expect($response->code())->toBe(201)
+                ->and($payload['client_name'] ?? null)->toBe('Claude Desktop')
+                ->and($payload['redirect_uris'] ?? null)->toBe(['https://claude.ai/api/mcp/auth_callback']);
+        });
+    } finally {
+        kirbyMcpRouteRemoveDirectory($oauthStorage);
+    }
+});
+
+it('rejects malformed OAuth JSON bodies instead of falling back to parsed body data', function (): void {
     kirbyMcpRouteWithHttpEnv([
         'KIRBY_MCP_HTTP_ENABLED' => '1',
         'KIRBY_MCP_HTTP_AUTH_MODE' => 'oauth',
@@ -481,20 +690,16 @@ it('decodes OAuth JSON request data from the raw PSR-7 body before parsed body d
             ->withHeader('Content-Type', 'application/json')
             ->withParsedBody([
                 'client_name' => 'Parsed Body Should Not Win',
-                'redirect_uris' => ['https://wrong.example/callback'],
-            ])
-            ->withBody($factory->createStream(json_encode([
-                'client_name' => 'Claude Desktop',
                 'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
-                'token_endpoint_auth_method' => 'none',
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)));
+            ])
+            ->withBody($factory->createStream('{not valid json'));
 
         $response = KirbyMcpOAuthRoute::handle(cmsPath(), $request);
         $payload = kirbyMcpRouteDecodeJson($response->body());
 
-        expect($response->code())->toBe(201)
-            ->and($payload['client_name'] ?? null)->toBe('Claude Desktop')
-            ->and($payload['redirect_uris'] ?? null)->toBe(['https://claude.ai/api/mcp/auth_callback']);
+        expect($response->code())->toBe(400)
+            ->and($payload['error'] ?? null)->toBe('invalid_request')
+            ->and($payload['error_description'] ?? '')->toContain('valid JSON object');
     });
 });
 

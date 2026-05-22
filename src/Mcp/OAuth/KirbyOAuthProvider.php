@@ -17,6 +17,7 @@ final class KirbyOAuthProvider
     private const ACCESS_TOKEN_TTL = 3600;
     private const REFRESH_TOKEN_TTL = 2592000;
     private const SESSION_TTL = 600;
+    private const INVALID_JSON_REQUEST = '__kirby_mcp_invalid_json';
 
     public function __construct(
         private readonly string $projectRoot,
@@ -85,6 +86,10 @@ final class KirbyOAuthProvider
     private function registerClient(): KirbyResponse
     {
         $data = $this->requestData();
+        if (($error = $this->invalidJsonResponse($data)) instanceof KirbyResponse) {
+            return $error;
+        }
+
         $redirectUris = $this->stringList($data['redirect_uris'] ?? null);
         if ($redirectUris === []) {
             return $this->oauthError('invalid_client_metadata', 'redirect_uris is required.', 400);
@@ -143,6 +148,10 @@ final class KirbyOAuthProvider
     private function authorize(): KirbyResponse
     {
         $params = $this->authorizationParams();
+        if (($error = $this->invalidJsonResponse($params)) instanceof KirbyResponse) {
+            return $error;
+        }
+
         $validation = $this->validateAuthorizationParams($params);
         if ($validation instanceof KirbyResponse) {
             return $validation;
@@ -164,7 +173,7 @@ final class KirbyOAuthProvider
             return $this->error(400, 'Unknown OAuth client.');
         }
 
-        $scopes = $this->finalizeScopes((string) ($params['scope'] ?? ''));
+        $scopes = $this->finalizeScopesForClient((string) ($params['scope'] ?? ''), $client);
         if ($this->needsConsent($user->id(), (string) $client['client_id'], $scopes)) {
             if ($this->request->getMethod() === 'POST') {
                 return $this->completeConsent($params, $user->id(), (string) $client['client_id'], $scopes);
@@ -181,6 +190,10 @@ final class KirbyOAuthProvider
     private function token(): KirbyResponse
     {
         $data = $this->requestData();
+        if (($error = $this->invalidJsonResponse($data)) instanceof KirbyResponse) {
+            return $error;
+        }
+
         $grantType = $this->stringValue($data['grant_type'] ?? null);
 
         return match ($grantType) {
@@ -193,6 +206,10 @@ final class KirbyOAuthProvider
     private function login(): KirbyResponse
     {
         $data = $this->requestData();
+        if (($error = $this->invalidJsonResponse($data)) instanceof KirbyResponse) {
+            return $error;
+        }
+
         $sessionId = $this->stringValue($data['session'] ?? $this->queryParams()['session'] ?? null);
         if ($sessionId === null || $this->readSession($sessionId) === null) {
             return $this->error(400, 'OAuth login session is missing or expired.');
@@ -262,6 +279,11 @@ final class KirbyOAuthProvider
         $invalidScope = $this->invalidScope($this->scopeString($params['scope'] ?? null));
         if ($invalidScope !== null) {
             return $this->redirectError($redirectUri, $this->stringValue($params['state'] ?? null), 'invalid_scope', 'Unsupported scope: ' . $invalidScope);
+        }
+
+        $invalidClientScope = $this->invalidClientScope($this->scopeString($params['scope'] ?? null), $client);
+        if ($invalidClientScope !== null) {
+            return $this->redirectError($redirectUri, $this->stringValue($params['state'] ?? null), 'invalid_scope', 'Client is not registered for scope: ' . $invalidClientScope);
         }
 
         return null;
@@ -371,7 +393,13 @@ final class KirbyOAuthProvider
             return $this->oauthError('invalid_grant', 'Refresh token was not issued to this client.', 400);
         }
 
-        $requestedScopes = $this->finalizeScopes($this->scopeString($data['scope'] ?? null));
+        $requestedScope = $this->scopeString($data['scope'] ?? null);
+        $invalidScope = $this->invalidScope($requestedScope);
+        if ($invalidScope !== null) {
+            return $this->oauthError('invalid_scope', 'Unsupported scope: ' . $invalidScope, 400);
+        }
+
+        $requestedScopes = $this->scopeList($requestedScope);
         $originalScopes = $this->stringList($record['scopes'] ?? null);
         if ($requestedScopes === []) {
             $requestedScopes = $originalScopes;
@@ -517,7 +545,17 @@ final class KirbyOAuthProvider
             }
         }
 
-        return $this->request->getMethod() === 'POST' ? $this->requestData() : $this->queryParams();
+        $queryParams = $this->queryParams();
+        if ($this->request->getMethod() !== 'POST') {
+            return $queryParams;
+        }
+
+        $data = $this->requestData();
+        if (($data[self::INVALID_JSON_REQUEST] ?? false) === true) {
+            return $data;
+        }
+
+        return array_merge($queryParams, $data);
     }
 
     /**
@@ -557,6 +595,10 @@ final class KirbyOAuthProvider
     private function completeConsent(array $params, string $userId, string $clientId, array $scopes): KirbyResponse
     {
         $data = $this->requestData();
+        if (($error = $this->invalidJsonResponse($data)) instanceof KirbyResponse) {
+            return $error;
+        }
+
         if (function_exists('csrf') && \csrf($this->stringValue($data['csrf'] ?? null) ?? '') !== true) {
             return $this->consentForm($this->client($clientId) ?? [], $scopes, 'Invalid CSRF token.');
         }
@@ -708,6 +750,21 @@ final class KirbyOAuthProvider
         return array_values(array_intersect($requested, $this->allowedScopes()));
     }
 
+    /**
+     * @param array<string, mixed> $client
+     * @return list<string>
+     */
+    private function finalizeScopesForClient(string $scope, array $client): array
+    {
+        $requested = $this->scopeList($scope);
+        $allowed = $this->clientScopes($client);
+        if ($requested === []) {
+            return $allowed;
+        }
+
+        return array_values(array_intersect($requested, $allowed));
+    }
+
     private function invalidScope(string $scope): ?string
     {
         foreach ($this->scopeList($scope) as $item) {
@@ -717,6 +774,32 @@ final class KirbyOAuthProvider
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $client
+     */
+    private function invalidClientScope(string $scope, array $client): ?string
+    {
+        $clientScopes = $this->clientScopes($client);
+        foreach ($this->scopeList($scope) as $item) {
+            if (!in_array($item, $clientScopes, true)) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $client
+     * @return list<string>
+     */
+    private function clientScopes(array $client): array
+    {
+        $scope = $this->scopeString($client['scope'] ?? null);
+
+        return $scope === '' ? $this->allowedScopes() : $this->scopeList($scope);
     }
 
     /**
@@ -758,10 +841,17 @@ final class KirbyOAuthProvider
     {
         $body = $this->rawBody();
         if ($body !== '' && str_contains(strtolower($this->request->getHeaderLine('Content-Type')), 'json')) {
-            $json = json_decode($body, true);
-            if (is_array($json)) {
+            try {
+                $json = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                return [self::INVALID_JSON_REQUEST => true];
+            }
+
+            if (is_array($json) && array_is_list($json) === false) {
                 return $json;
             }
+
+            return [self::INVALID_JSON_REQUEST => true];
         }
 
         $parsed = $this->request->getParsedBody();
@@ -781,6 +871,18 @@ final class KirbyOAuthProvider
         parse_str($body, $data);
 
         return is_array($data) ? $data : [];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function invalidJsonResponse(array $data): ?KirbyResponse
+    {
+        if (($data[self::INVALID_JSON_REQUEST] ?? false) === true) {
+            return $this->oauthError('invalid_request', 'Request body must be a valid JSON object.', 400);
+        }
+
+        return null;
     }
 
     private function rawBody(): string
