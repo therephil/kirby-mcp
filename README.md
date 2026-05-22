@@ -460,8 +460,9 @@ Put the JSON examples below in your Kirby project’s MCP config file:`.kirby-mc
 
 > [!WARNING]
 > All `/mcp` requests require `Authorization: Bearer ...`; query-string credentials are rejected.
-> Public route requests require HTTPS, origins must match `http.allowedOrigins`, and every operation
-> is scope-checked. If the route is registered but `http.enabled` is false, it returns 404.
+> Public route requests require HTTPS, requests with an `Origin` header must match
+> `http.allowedOrigins`, and every operation is scope-checked. If the route is registered but
+> `http.enabled` is false, it returns 404.
 
 #### Local loopback token
 
@@ -493,7 +494,7 @@ Use `remote-token` for public HTTPS routes when the client can send a static Bea
   "http": {
     "enabled": true,
     "path": "/mcp",
-    "allowedOrigins": ["https://client.example"],
+    "allowedOrigins": [],
     "auth": {
       "mode": "remote-token",
       "tokens": [
@@ -507,6 +508,10 @@ Use `remote-token` for public HTTPS routes when the client can send a static Bea
   }
 }
 ```
+
+Local CLI clients usually send no `Origin` header, so omit `allowedOrigins` or leave it empty. Add
+exact origins only for browser or webview clients that send `Origin`, for example
+`http://localhost:5173`.
 
 Generate the token hash:
 
