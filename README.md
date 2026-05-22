@@ -24,6 +24,10 @@ vendor/bin/kirby-mcp install
 vendor/bin/kirby-mcp
 ```
 
+This quickstart is for a local stdio MCP server. If you want Kirby to serve a production HTTP
+`/mcp` route, install `bnomei/kirby-mcp` as a normal Composer dependency instead of `--dev`; see
+**HTTP transport** below.
+
 Then configure your MCP client (Cursor/Claude Code/Codex CLI) using the examples in **Client setup** and copy the bundled Skills as described below.
 
 See **Client setup → Claude Code** and **Client setup → Codex CLI** for per-agent install and Skill sync steps.
@@ -403,6 +407,18 @@ composer require bnomei/kirby-mcp
 
 Do not install it with `composer require --dev` if your `/mcp` route should work in production;
 the production PHP runtime must be able to autoload `Bnomei\KirbyMcp\Mcp\KirbyMcpRoutes`.
+The built-in Claude OAuth provider, route helpers, token validation, and consent-snippet support all
+ship with this package.
+
+If you choose to build your own OAuth/OIDC issuer with League OAuth2 Server instead of using Kirby
+MCP's built-in Claude OAuth provider, install that package in the host project too:
+
+```bash
+composer require league/oauth2-server
+```
+
+Kirby MCP does not require `league/oauth2-server` for the built-in Claude flow. Only install it when
+your own Kirby code or plugin will run that authorization server.
 
 Add these routes to your Kirby config, usually `site/config/config.php`:
 
@@ -526,10 +542,12 @@ and Claude.ai custom connectors.
 ##### Claude Desktop / Claude.ai custom connectors
 
 Use the built-in OAuth provider when Claude should connect directly to your public Kirby `/mcp`
-route. In Claude, add a custom connector with the MCP server URL `https://example.com/mcp`.
-Claude will discover the OAuth metadata, dynamically register a public client, open the authorize
-flow, receive the callback at `https://claude.ai/api/mcp/auth_callback`, and then call `/mcp` with
-the issued Bearer token.
+route. This is the intended production path for Claude Desktop and Claude.ai custom connectors:
+install `bnomei/kirby-mcp` as a production dependency, register `KirbyMcpRoutes::routes()`, enable
+the config below, and optionally add the consent snippet shown here. In Claude, add a custom
+connector with the MCP server URL `https://example.com/mcp`. Claude will discover the OAuth
+metadata, dynamically register a public client, open the authorize flow, receive the callback at
+`https://claude.ai/api/mcp/auth_callback`, and then call `/mcp` with the issued Bearer token.
 
 No separate OAuth server package is required for this built-in Claude flow. The provider is shipped
 with `bnomei/kirby-mcp`; enabling `http.oauthProvider.enabled` is enough once the Kirby route helper
@@ -604,10 +622,10 @@ Non-loopback OAuth provider requests require HTTPS. If the connector sends an `O
 include that origin in `http.allowedOrigins`; for Claude custom connectors, `https://claude.ai`
 is the expected origin.
 
-##### External OAuth issuer
+##### Custom OAuth/OIDC issuer
 
-If you already have an OAuth/OIDC authorization server, keep `oauthProvider.enabled` false and
-configure the issuer, audience/resource, and JWKS URI yourself:
+If you already have, or want to build, a separate OAuth/OIDC authorization server, keep
+`oauthProvider.enabled` false and configure the issuer, audience/resource, and JWKS URI yourself:
 
 ```json
 {
@@ -627,11 +645,9 @@ configure the issuer, audience/resource, and JWKS URI yourself:
 ```
 
 OAuth mode validates JWT access tokens by issuer, audience/resource, JWKS signature, expiry, and
-operation scopes.
-
-If you build that external issuer inside Kirby with a package such as `league/oauth2-server`, install
-and configure that package in the host project yourself. Kirby MCP only validates the resulting JWTs
-for this external-issuer mode; it does not install or run the external authorization server for you.
+operation scopes. If you build this custom issuer with `league/oauth2-server`, install and wire that
+package in the host project. Kirby MCP validates the resulting JWTs for this mode; it does not run
+your custom authorization server for you.
 
 HTTP tokens are scope-checked per operation. Available scope names are:
 
