@@ -597,6 +597,113 @@ it('preserves OAuth query params when explicit consent posts back for a logged-i
     }
 });
 
+it('renders custom OAuth consent snippets with approval data', function (): void {
+    $projectRoot = cmsPath();
+    $oauthStorage = $projectRoot . DIRECTORY_SEPARATOR . '.kirby-mcp' . DIRECTORY_SEPARATOR . 'oauth';
+    $snippetFile = $projectRoot . DIRECTORY_SEPARATOR . 'site' . DIRECTORY_SEPARATOR . 'snippets' . DIRECTORY_SEPARATOR . 'mcp-oauth-consent-test.php';
+    $snippetBackup = is_file($snippetFile) ? file_get_contents($snippetFile) : null;
+    kirbyMcpRouteRemoveDirectory($oauthStorage);
+    file_put_contents($snippetFile, <<<'PHP'
+<?php
+$clientName = (string) ($client['client_name'] ?? $client['client_id'] ?? 'OAuth client');
+$userEmail = (string) ($user?->email() ?? 'Kirby user');
+?>
+<form data-oauth-consent method="post" action="<?= esc((string) $approveUrl, 'attr') ?>">
+    <?php if ($error !== null): ?>
+    <p data-error><?= esc((string) $error) ?></p>
+    <?php endif ?>
+    <strong data-client><?= esc($clientName) ?></strong>
+    <span data-user><?= esc($userEmail) ?></span>
+    <?php foreach ($scopes as $scope): ?>
+    <span data-scope><?= esc((string) $scope) ?></span>
+    <?php endforeach ?>
+    <input type="hidden" name="csrf" value="<?= esc((string) csrf(), 'attr') ?>">
+    <button type="submit" name="approve" value="1">Approve</button>
+    <button type="submit" name="deny" value="1" formaction="<?= esc((string) $denyUrl, 'attr') ?>">Deny</button>
+</form>
+PHP);
+
+    $previousApp = App::instance(null, true);
+    $previousErrorHandlers = captureErrorHandlers();
+    $previousWhoops = App::$enableWhoops;
+    App::$enableWhoops = false;
+    $app = new App([
+        'roots' => [
+            'index' => $projectRoot,
+        ],
+    ]);
+    ensureUser($app, 'mcp-oauth-snippet@example.com');
+    $app->impersonate('mcp-oauth-snippet@example.com');
+
+    try {
+        kirbyMcpRouteWithHttpEnv([
+            'KIRBY_MCP_HTTP_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_AUTH_MODE' => 'oauth',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_ENABLED' => '1',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_CONSENT' => 'snippet',
+            'KIRBY_MCP_HTTP_OAUTH_PROVIDER_CONSENT_SNIPPET' => 'mcp-oauth-consent-test',
+            'KIRBY_MCP_HTTP_SCOPES' => 'kirby-mcp:read,kirby-mcp:runtime',
+        ], function () use ($projectRoot): void {
+            $factory = new HttpFactory();
+            $client = kirbyMcpRouteRegisterOAuthClient($factory, $projectRoot, [
+                'scope' => 'kirby-mcp:read',
+            ]);
+            $verifier = str_repeat('s', 43);
+            $authorizeQuery = http_build_query([
+                'response_type' => 'code',
+                'client_id' => $client['client_id'],
+                'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+                'scope' => 'kirby-mcp:read',
+                'state' => 'snippet-consent',
+                'resource' => 'https://example.test/mcp',
+                'code_challenge' => OAuthKeySet::base64Url(hash('sha256', $verifier, true)),
+                'code_challenge_method' => 'S256',
+            ], '', '&', PHP_QUERY_RFC3986);
+            $authorizeUrl = 'https://example.test/mcp/oauth/authorize?' . $authorizeQuery;
+
+            $authorizeResponse = KirbyMcpOAuthRoute::handle($projectRoot, $factory->createServerRequest('GET', $authorizeUrl, [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ]));
+            expect($authorizeResponse->code())->toBe(200);
+            expect($authorizeResponse->body())
+                ->toContain('data-oauth-consent')
+                ->toContain('Claude Desktop')
+                ->toContain('mcp-oauth-snippet@example.com')
+                ->toContain('kirby-mcp:read')
+                ->toContain('snippet-consent');
+            expect(preg_match('/name="csrf" value="([^"]*)"/', $authorizeResponse->body(), $matches))->toBe(1);
+
+            $approveRequest = $factory->createServerRequest('POST', $authorizeUrl, [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ])
+                ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+                ->withBody($factory->createStream(http_build_query([
+                    'csrf' => html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8'),
+                    'approve' => '1',
+                ], '', '&', PHP_QUERY_RFC3986)));
+            $approveResponse = KirbyMcpOAuthRoute::handle($projectRoot, $approveRequest);
+            expect($approveResponse->code())->toBe(302);
+            parse_str((string) parse_url(kirbyMcpRouteLocation($approveResponse), PHP_URL_QUERY), $redirectQuery);
+            expect($redirectQuery['state'] ?? null)->toBe('snippet-consent')
+                ->and($redirectQuery['code'] ?? null)->toBeString();
+        });
+    } finally {
+        kirbyMcpRouteCommitSession($app);
+        $app->impersonate(null);
+        if ($previousApp instanceof App) {
+            App::instance($previousApp);
+        }
+        App::$enableWhoops = $previousWhoops;
+        restoreErrorHandlers($previousErrorHandlers);
+        kirbyMcpRouteRemoveDirectory($oauthStorage);
+        if (is_string($snippetBackup)) {
+            file_put_contents($snippetFile, $snippetBackup);
+        } else {
+            @unlink($snippetFile);
+        }
+    }
+});
+
 it('rejects authorize scopes that exceed the registered OAuth client scope', function (): void {
     $projectRoot = cmsPath();
     $oauthStorage = $projectRoot . DIRECTORY_SEPARATOR . '.kirby-mcp' . DIRECTORY_SEPARATOR . 'oauth';
