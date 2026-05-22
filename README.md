@@ -395,9 +395,23 @@ Start the server (point it at a composer-based Kirby project):
 
 ### HTTP transport (optional)
 
-Kirby MCP can expose Streamable HTTP for clients that support an HTTP MCP URL. HTTP is disabled
-by default; `vendor/bin/kirby-mcp` continues to run the stdio transport unless you explicitly add
-a Kirby route and enable HTTP in `.kirby-mcp/mcp.json` or environment variables.
+HTTP is disabled by default. `vendor/bin/kirby-mcp` continues to run stdio unless you add the Kirby
+route and set `"http.enabled": true` in `.kirby-mcp/mcp.json` or environment variables.
+
+> [!NOTE]
+> Remote HTTP follows the standard MCP pattern: HTTPS `/mcp`, Bearer/OAuth auth, and MCP metadata
+> discovery. Claude Code and Claude Desktop/Claude.ai custom connectors are the primary tested
+> targets. Other MCP-compatible clients may work if they support remote HTTP MCP and the configured
+> auth mode. OpenAI/ChatGPT uses MCP through Responses API tools and ChatGPT Apps/MCP Apps, not the
+> Claude custom-connector URL flow documented here.
+
+Use one auth mode:
+
+| Mode           | Use for                                                      |
+| -------------- | ------------------------------------------------------------ |
+| `shared-token` | Local loopback development with a client on the same host.   |
+| `remote-token` | Public HTTPS routes for clients that can send Bearer tokens. |
+| `oauth`        | Claude Desktop/Claude.ai custom connectors or OAuth clients. |
 
 For a Kirby route, install this package as a production dependency:
 
@@ -407,8 +421,6 @@ composer require bnomei/kirby-mcp
 
 Do not install it with `composer require --dev` if your `/mcp` route should work in production;
 the production PHP runtime must be able to autoload `Bnomei\KirbyMcp\Mcp\KirbyMcpRoutes`.
-The built-in Claude OAuth provider, route helpers, token validation, and consent-snippet support all
-ship with this package.
 
 Add these routes to your Kirby config, usually `site/config/config.php`:
 
@@ -425,10 +437,10 @@ return [
 ```
 
 If your config already defines `routes`, spread these entries into the existing routes array
-instead of replacing it. `KirbyMcpRoutes::routes()` adds the MCP endpoint, OAuth protected resource
-metadata, OAuth authorization server metadata, dynamic client registration, authorize/token, JWKS,
-and login routes. The route pattern must match `http.path`; the default `/mcp` path matches the
-generated `mcp` route. If you change `http.path`, pass the same path to the route helper:
+instead of replacing it. No special Nginx location or `vendor/bin/kirby-mcp` proxy is required.
+
+The route helper adds `/mcp` plus the optional OAuth metadata, registration, authorize/token, JWKS,
+and login routes. If you change `http.path`, pass the same path to the route helper:
 
 ```php
 'routes' => [
@@ -436,7 +448,7 @@ generated `mcp` route. If you change `http.path`, pass the same path to the rout
 ],
 ```
 
-If you also change the built-in OAuth provider path, pass it as the fourth argument:
+If you also change the built-in OAuth provider path, pass it as a named argument:
 
 ```php
 'routes' => [
@@ -444,21 +456,16 @@ If you also change the built-in OAuth provider path, pass it as the fourth argum
 ],
 ```
 
-No special Nginx location or `vendor/bin/kirby-mcp` proxy is required; the route runs inside
-Kirby’s normal PHP request lifecycle.
+Put the JSON examples below in your Kirby project’s MCP config file:`.kirby-mcp/mcp.json`.
 
-All `/mcp` requests require `Authorization: Bearer ...`. Do not put credentials in query strings.
-Origin validation runs before MCP protocol handling, tokens are scope-checked per operation, and
-write/eval/query tools keep their existing confirmation and enablement gates. If the route is
-registered but `http.enabled` is false, it returns 404.
-
-Put the JSON examples below in your Kirby project’s MCP config file:
-`.kirby-mcp/mcp.json`. Older installs may still use `.kirby-mcp/config.json`; both are read.
+> [!WARNING]
+> All `/mcp` requests require `Authorization: Bearer ...`; query-string credentials are rejected.
+> Public route requests require HTTPS, origins must match `http.allowedOrigins`, and every operation
+> is scope-checked. If the route is registered but `http.enabled` is false, it returns 404.
 
 #### Local loopback token
 
-Shared-token mode is for local development only. Use it when the MCP client connects from the
-same machine and can send an `Authorization` header:
+Use `shared-token` only for local development from the same machine:
 
 ```json
 {
@@ -475,14 +482,11 @@ same machine and can send an `Authorization` header:
 }
 ```
 
-The Kirby route rejects shared-token requests unless PHP reports the request’s `REMOTE_ADDR` as
-loopback. The route adapter does not use `http.host` or `http.port`; those fields only apply to
-the low-level `kirby-mcp http` listener/config check.
+The Kirby route rejects shared-token requests unless PHP reports `REMOTE_ADDR` as loopback.
 
-#### Remote bearer token
+#### Remote bearer token (recommended)
 
-Remote-token mode is for public HTTPS Kirby routes when the MCP client can send static bearer
-headers, such as Claude Code, Cursor, `mcp-remote`, or a custom client:
+Use `remote-token` for public HTTPS routes when the client can send a static Bearer token:
 
 ```json
 {
@@ -504,13 +508,13 @@ headers, such as Claude Code, Cursor, `mcp-remote`, or a custom client:
 }
 ```
 
-Generate a hash for a high-entropy token with:
+Generate the token hash:
 
 ```bash
 php -r 'echo "sha256:" . hash("sha256", $argv[1]) . PHP_EOL;' 'replace-with-a-long-random-secret'
 ```
 
-The raw token can also come from the environment:
+Or provide the raw token through the environment:
 
 ```bash
 KIRBY_MCP_HTTP_AUTH_MODE=remote-token
@@ -519,29 +523,17 @@ KIRBY_MCP_HTTP_REMOTE_TOKEN_ID=claude-code
 KIRBY_MCP_HTTP_REMOTE_TOKEN_SCOPES=kirby-mcp:read,kirby-mcp:runtime
 ```
 
-Remote-token mode still rejects query-string credentials, uses normal per-operation scope checks,
-and rejects non-loopback route requests unless Kirby/PHP sees the request as HTTPS. It is useful
-for clients that can send an `Authorization` header; Claude web custom connectors should use OAuth
-instead.
+Use OAuth instead for Claude Desktop/Claude.ai custom connectors.
 
-#### OAuth auth
+#### OAuth auth (for Claude Desktop/Ai)
 
-OAuth mode is for JWT-bearing clients and interactive remote auth flows, including Claude Desktop
-and Claude.ai custom connectors.
+Use `oauth` for Claude Desktop/Claude.ai custom connectors. No separate OAuth server package is
+required for the built-in Claude flow.
 
-##### Claude Desktop / Claude.ai custom connectors
-
-Use the built-in OAuth provider when Claude should connect directly to your public Kirby `/mcp`
-route. This is the intended production path for Claude Desktop and Claude.ai custom connectors:
-install `bnomei/kirby-mcp` as a production dependency, register `KirbyMcpRoutes::routes()`, enable
-the config below, and optionally add the consent snippet shown here. In Claude, add a custom
-connector with the MCP server URL `https://example.com/mcp`. Claude will discover the OAuth
-metadata, dynamically register a public client, open the authorize flow, receive the callback at
-`https://claude.ai/api/mcp/auth_callback`, and then call `/mcp` with the issued Bearer token.
-
-No separate OAuth server package is required for this built-in Claude flow. The provider is shipped
-with `bnomei/kirby-mcp`; enabling `http.oauthProvider.enabled` is enough once the Kirby route helper
-is registered.
+1. Register `KirbyMcpRoutes::routes()`.
+2. Enable the config below.
+3. Add a Claude custom connector with MCP server URL `https://example.com/mcp`.
+4. Add the consent snippet only if you want a custom approval screen.
 
 ```json
 {
@@ -562,25 +554,17 @@ is registered.
 }
 ```
 
-With `oauthProvider.enabled=true`, the route derives the issuer, audience/resource, and JWKS URL
-from the incoming HTTPS request unless you explicitly set `http.auth.issuer`,
-`http.auth.audience`, or `http.auth.jwksUri`. The provider stores clients, authorization codes,
-refresh tokens, remembered consents, sessions, and its RSA signing key under `.kirby-mcp/oauth`;
-it does not use Kirby cache.
+With `oauthProvider.enabled=true`, the route derives issuer, audience/resource, and JWKS URL from
+the incoming HTTPS request unless you set `http.auth.issuer`, `http.auth.audience`, or
+`http.auth.jwksUri`. Provider state is stored under `.kirby-mcp/oauth`, not in Kirby cache.
 
-Consent defaults to `snippet`: a logged-in Kirby user must approve or deny the client before Claude
-gets a token for their Kirby user. If no Kirby user is logged in, the provider stores the authorize
-request in `.kirby-mcp/oauth/sessions`, redirects to `/mcp/oauth/login`, and returns to the
-authorize flow after login. `snippet` calls the configured Kirby snippet name from `consentSnippet`
-with `client`, `scopes`, `user`, `approveUrl`, `denyUrl`, and `error` data; if the snippet is
-missing or returns an empty string, Kirby MCP renders a minimal built-in approve/deny form. Set
-`consent` to `always`, `remember`, or `auto` only when that weaker or more convenient behavior is
-intended. `auto` fast-forwards logged-in Kirby users through consent and is best reserved for trusted
-private deployments.
+> [!IMPORTANT]
+> Consent defaults to `snippet`. A logged-in Kirby user must approve or deny the client before Claude
+> gets a token. If the user is not logged in, Kirby MCP stores the authorize request under
+> `.kirby-mcp/oauth/sessions`, redirects through `/mcp/oauth/login`, and resumes the OAuth flow
+> after login. Use `auto` only for trusted private deployments.
 
-For a custom approval screen, create the snippet named by `consentSnippet`. The default snippet name
-is `kirby-mcp/oauth-consent`, which maps to `site/snippets/kirby-mcp/oauth-consent.php` in a Kirby
-project:
+For a custom approval screen, create a new snippet. The default snippet name is `kirby-mcp/oauth-consent`, which maps to `site/snippets/kirby-mcp/oauth-consent.php` in a Kirby project. The snippet receives `client`, `scopes`, `user`, `approveUrl`, `denyUrl`, and `error`:
 
 ```php
 <?php
@@ -606,14 +590,8 @@ $userEmail = (string) ($user?->email() ?? 'Kirby user');
 </form>
 ```
 
-The snippet must submit a POST request back to the provided authorize URL, include a `csrf` field
-generated by Kirby's `csrf()` helper, and submit either `approve=1` or `deny=1`. `approveUrl` and
-`denyUrl` preserve the original OAuth query parameters, including `state`, `resource`, PKCE values,
-and the registered callback.
-
-Non-loopback OAuth provider requests require HTTPS. If the connector sends an `Origin` header,
-include that origin in `http.allowedOrigins`; for Claude custom connectors, `https://claude.ai`
-is the expected origin.
+The snippet must submit `POST` back to the provided authorize URL, include a `csrf` field generated
+by Kirby's `csrf()` helper, and submit either `approve=1` or `deny=1`.
 
 ##### Custom OAuth/OIDC issuer
 
