@@ -410,16 +410,6 @@ the production PHP runtime must be able to autoload `Bnomei\KirbyMcp\Mcp\KirbyMc
 The built-in Claude OAuth provider, route helpers, token validation, and consent-snippet support all
 ship with this package.
 
-If you choose to build your own OAuth/OIDC issuer with League OAuth2 Server instead of using Kirby
-MCP's built-in Claude OAuth provider, install that package in the host project too:
-
-```bash
-composer require league/oauth2-server
-```
-
-Kirby MCP does not require `league/oauth2-server` for the built-in Claude flow. Only install it when
-your own Kirby code or plugin will run that authorization server.
-
 Add these routes to your Kirby config, usually `site/config/config.php`:
 
 ```php
@@ -645,9 +635,9 @@ If you already have, or want to build, a separate OAuth/OIDC authorization serve
 ```
 
 OAuth mode validates JWT access tokens by issuer, audience/resource, JWKS signature, expiry, and
-operation scopes. If you build this custom issuer with `league/oauth2-server`, install and wire that
-package in the host project. Kirby MCP validates the resulting JWTs for this mode; it does not run
-your custom authorization server for you.
+operation scopes. Kirby MCP validates the resulting JWTs for this mode; it does not run your custom
+authorization server for you. A package such as `league/oauth2-server` can be useful if you build
+that issuer yourself, but it is not used by the built-in Claude OAuth provider.
 
 HTTP tokens are scope-checked per operation. Available scope names are:
 
