@@ -56,7 +56,7 @@ final class KirbyMcpRoute
 
         if (
             $config->authMode === KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN
-            && self::isLoopbackRemoteAddress($request) === false
+            && self::isLoopbackRequest($request) === false
             && self::isHttpsRequest($request) === false
         ) {
             return self::error(503, 'HTTP remote-token auth requires HTTPS for non-loopback requests.');
@@ -162,6 +162,22 @@ final class KirbyMcpRoute
         return $remoteAddress === '::1'
             || $remoteAddress === '127.0.0.1'
             || str_starts_with($remoteAddress, '127.');
+    }
+
+    private static function isLoopbackRequest(ServerRequestInterface $request): bool
+    {
+        return self::isLoopbackRemoteAddress($request)
+            && self::isLoopbackHost($request->getUri()->getHost());
+    }
+
+    private static function isLoopbackHost(string $host): bool
+    {
+        $host = strtolower(trim($host, " \t\n\r\0\x0B[]"));
+
+        return $host === 'localhost'
+            || $host === '::1'
+            || $host === '127.0.0.1'
+            || str_starts_with($host, '127.');
     }
 
     private static function isHttpsRequest(ServerRequestInterface $request): bool

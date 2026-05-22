@@ -515,9 +515,10 @@ Shared-token mode is for loopback local development only:
 ```
 
 The Kirby route rejects shared-token requests unless PHP reports the request’s `REMOTE_ADDR` as
-loopback. Use OAuth for public, reverse-proxied, or otherwise non-local deployments. The route
-adapter does not use `http.host` or `http.port`; those fields only apply to the low-level
-`kirby-mcp http` listener/config check.
+loopback. Use remote-token for public HTTPS clients that can send bearer headers, or OAuth for
+interactive clients such as Claude web custom connectors. The route adapter does not use
+`http.host` or `http.port`; those fields only apply to the low-level `kirby-mcp http`
+listener/config check.
 
 HTTP tokens are scope-checked per operation. Available scope names are:
 

@@ -253,6 +253,48 @@ it('rejects remote-token Kirby route requests from public HTTP clients', functio
     });
 });
 
+it('rejects remote-token public HTTP requests forwarded from local reverse proxies', function (): void {
+    kirbyMcpRouteWithHttpEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'remote-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN' => 'remote-secret',
+    ], function (): void {
+        $factory = new HttpFactory();
+        $request = $factory->createServerRequest('POST', 'http://example.test/mcp', [
+            'REMOTE_ADDR' => '127.0.0.1',
+        ])
+            ->withHeader('Authorization', 'Bearer remote-secret')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($factory->createStream(kirbyMcpRouteInitializePayload()));
+
+        $response = KirbyMcpRoute::handle(cmsPath(), $request);
+
+        expect($response->code())->toBe(503);
+        expect($response->body())->toContain('HTTP remote-token auth requires HTTPS for non-loopback requests.');
+    });
+});
+
+it('allows remote-token HTTP only when the request is fully loopback', function (): void {
+    kirbyMcpRouteWithHttpEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'remote-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN' => 'remote-secret',
+    ], function (): void {
+        $factory = new HttpFactory();
+        $request = $factory->createServerRequest('POST', 'http://127.0.0.1/mcp', [
+            'REMOTE_ADDR' => '127.0.0.1',
+        ])
+            ->withHeader('Authorization', 'Bearer remote-secret')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($factory->createStream(kirbyMcpRouteInitializePayload()));
+
+        $response = KirbyMcpRoute::handle(cmsPath(), $request);
+
+        expect($response->code())->toBe(200);
+        expect($response->headers()['Mcp-Session-Id'] ?? '')->not()->toBe('');
+    });
+});
+
 it('rejects invalid remote-token bearer credentials', function (): void {
     kirbyMcpRouteWithHttpEnv([
         'KIRBY_MCP_HTTP_ENABLED' => '1',
