@@ -556,7 +556,7 @@ is registered.
     "oauthProvider": {
       "enabled": true,
       "path": "/mcp/oauth",
-      "consent": "auto"
+      "consent": "snippet"
     }
   }
 }
@@ -568,16 +568,19 @@ from the incoming HTTPS request unless you explicitly set `http.auth.issuer`,
 refresh tokens, remembered consents, sessions, and its RSA signing key under `.kirby-mcp/oauth`;
 it does not use Kirby cache.
 
-Consent defaults to `auto`: a logged-in Kirby user is fast-forwarded through consent and gets a
-Claude token for their Kirby user. If no Kirby user is logged in, the provider stores the authorize
+Consent defaults to `snippet`: a logged-in Kirby user must approve or deny the client before Claude
+gets a token for their Kirby user. If no Kirby user is logged in, the provider stores the authorize
 request in `.kirby-mcp/oauth/sessions`, redirects to `/mcp/oauth/login`, and returns to the
-authorize flow after login. Set `consent` to `remember`, `always`, or `snippet` if you want an
-explicit approval step. `snippet` calls the configured Kirby snippet name from
-`consentSnippet` with `client`, `scopes`, `user`, `approveUrl`, `denyUrl`, and `error` data.
+authorize flow after login. `snippet` calls the configured Kirby snippet name from `consentSnippet`
+with `client`, `scopes`, `user`, `approveUrl`, `denyUrl`, and `error` data; if the snippet is
+missing or returns an empty string, Kirby MCP renders a minimal built-in approve/deny form. Set
+`consent` to `always`, `remember`, or `auto` only when that weaker or more convenient behavior is
+intended. `auto` fast-forwards logged-in Kirby users through consent and is best reserved for trusted
+private deployments.
 
-For a custom approval screen, set `"consent": "snippet"` and create the snippet named by
-`consentSnippet`. The default snippet name is `kirby-mcp/oauth-consent`, which maps to
-`site/snippets/kirby-mcp/oauth-consent.php` in a Kirby project:
+For a custom approval screen, create the snippet named by `consentSnippet`. The default snippet name
+is `kirby-mcp/oauth-consent`, which maps to `site/snippets/kirby-mcp/oauth-consent.php` in a Kirby
+project:
 
 ```php
 <?php
@@ -760,7 +763,7 @@ Kirby host selection:
 | `http.auth.scopes`                  | `string[]` | `[]`                      | Accepted operation scopes such as `kirby-mcp:read`, `kirby-mcp:runtime`, `kirby-mcp:write`, `kirby-mcp:execute`, and `kirby-mcp:admin`.                                                                      |
 | `http.oauthProvider.enabled`        | `bool`     | `false`                   | Enable the built-in OAuth authorization server for Claude Desktop/Claude.ai custom connectors.                                                                                                               |
 | `http.oauthProvider.path`           | `string`   | `/mcp/oauth`              | Built-in OAuth provider route prefix. Match this with the fourth argument to `KirbyMcpRoutes::routes()` if you customize it.                                                                                 |
-| `http.oauthProvider.consent`        | `string`   | `auto`                    | Consent mode: `auto`, `remember`, `always`, or `snippet`.                                                                                                                                                    |
+| `http.oauthProvider.consent`        | `string`   | `snippet`                 | Consent mode: `snippet`, `always`, `remember`, or `auto`. `auto` skips explicit consent for logged-in Kirby users and should only be used for trusted private deployments.                                   |
 | `http.oauthProvider.consentSnippet` | `string`   | `kirby-mcp/oauth-consent` | Kirby snippet used when `consent` is `snippet`.                                                                                                                                                              |
 
 Environment variables:

@@ -457,8 +457,23 @@ it('serves the built-in OAuth provider flow for Claude Desktop custom connectors
                 'REMOTE_ADDR' => '203.0.113.10',
             ]);
             $authorizeResponse = KirbyMcpOAuthRoute::handle($projectRoot, $authorizeRequest);
-            expect($authorizeResponse->code())->toBe(302);
-            $location = kirbyMcpRouteLocation($authorizeResponse);
+            expect($authorizeResponse->code())->toBe(200);
+            expect($authorizeResponse->body())
+                ->toContain('Authorize Claude Desktop')
+                ->toContain('kirby-mcp:read, kirby-mcp:runtime');
+            expect(preg_match('/name="csrf" value="([^"]*)"/', $authorizeResponse->body(), $matches))->toBe(1);
+
+            $approveRequest = $factory->createServerRequest('POST', 'https://example.test/mcp/oauth/authorize?' . $authorizeQuery, [
+                'REMOTE_ADDR' => '203.0.113.10',
+            ])
+                ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+                ->withBody($factory->createStream(http_build_query([
+                    'csrf' => html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8'),
+                    'approve' => '1',
+                ], '', '&', PHP_QUERY_RFC3986)));
+            $approveResponse = KirbyMcpOAuthRoute::handle($projectRoot, $approveRequest);
+            expect($approveResponse->code())->toBe(302);
+            $location = kirbyMcpRouteLocation($approveResponse);
             expect($location)->toStartWith('https://claude.ai/api/mcp/auth_callback?');
             parse_str((string) parse_url($location, PHP_URL_QUERY), $redirectQuery);
             expect($redirectQuery['state'] ?? null)->toBe('state-123')

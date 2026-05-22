@@ -85,6 +85,7 @@ it('keeps HTTP disabled by default with loopback /mcp defaults', function (): vo
             ->and($config->host)->toBe('127.0.0.1')
             ->and($config->port)->toBe(8765)
             ->and($config->path)->toBe('/mcp')
+            ->and($config->oauthProvider->consent)->toBe('snippet')
             ->and($config->validationErrors())->toBe([]);
     });
 });
@@ -354,4 +355,22 @@ it('validates built-in OAuth provider settings', function (): void {
     expect($config->validationErrors())
         ->toContain('HTTP OAuth provider path must start with /.')
         ->toContain('HTTP OAuth provider consent snippet must not be empty.');
+});
+
+it('keeps auto consent available as an explicit opt-in', function (): void {
+    $root = kirbyMcpHttpConfigTempRoot([
+        'http' => [
+            'oauthProvider' => [
+                'consent' => 'auto',
+            ],
+        ],
+    ]);
+
+    try {
+        kirbyMcpHttpConfigWithEnv([], function () use ($root): void {
+            expect(KirbyMcpConfig::load($root)->http()->oauthProvider->consent)->toBe('auto');
+        });
+    } finally {
+        kirbyMcpHttpConfigRemoveRoot($root);
+    }
 });

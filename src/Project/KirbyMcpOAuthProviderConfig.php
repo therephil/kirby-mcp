@@ -8,7 +8,7 @@ final readonly class KirbyMcpOAuthProviderConfig
 {
     public const DEFAULT_ENABLED = false;
     public const DEFAULT_PATH = '/mcp/oauth';
-    public const DEFAULT_CONSENT = 'auto';
+    public const DEFAULT_CONSENT = 'snippet';
     public const DEFAULT_CONSENT_SNIPPET = 'kirby-mcp/oauth-consent';
 
     /**

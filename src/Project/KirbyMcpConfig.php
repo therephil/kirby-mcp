@@ -586,7 +586,7 @@ final readonly class KirbyMcpConfig
         $consent = strtolower(trim($consent ?? ''));
 
         return match ($consent) {
-            'remember', 'always', 'snippet' => $consent,
+            'auto', 'remember', 'always', 'snippet' => $consent,
             default => KirbyMcpOAuthProviderConfig::DEFAULT_CONSENT,
         };
     }
