@@ -402,57 +402,70 @@ composer require bnomei/kirby-mcp
 ```
 
 Do not install it with `composer require --dev` if your `/mcp` route should work in production;
-the production PHP runtime must be able to autoload `Bnomei\KirbyMcp\Mcp\KirbyMcpRoute`.
+the production PHP runtime must be able to autoload `Bnomei\KirbyMcp\Mcp\KirbyMcpRoutes`.
 
-Add this route to your Kirby config, usually `site/config/config.php`:
+Add these routes to your Kirby config, usually `site/config/config.php`:
 
 ```php
 <?php
 
-use Bnomei\KirbyMcp\Mcp\KirbyMcpRoute;
+use Bnomei\KirbyMcp\Mcp\KirbyMcpRoutes;
 
 return [
     'routes' => [
-        [
-            'pattern' => 'mcp',
-            'method' => 'GET|POST|DELETE|OPTIONS',
-            'action' => fn () => KirbyMcpRoute::handle(),
-        ],
+        ...KirbyMcpRoutes::routes(),
     ],
 ];
 ```
 
-If your config already defines `routes`, add this entry to the existing routes array instead of
-replacing it. The route pattern must match `http.path`; the default `/mcp` path matches the
-`mcp` route above. No special Nginx location or `vendor/bin/kirby-mcp` proxy is required; the
-route runs inside Kirby’s normal PHP request lifecycle.
+If your config already defines `routes`, spread these entries into the existing routes array
+instead of replacing it. `KirbyMcpRoutes::routes()` adds the MCP endpoint and the OAuth protected
+resource metadata route needed by OAuth-aware clients. The route pattern must match `http.path`;
+the default `/mcp` path matches the generated `mcp` route. If you change `http.path`, pass the
+same path to the route helper:
+
+```php
+'routes' => [
+    ...KirbyMcpRoutes::routes('/custom-mcp'),
+],
+```
+
+No special Nginx location or `vendor/bin/kirby-mcp` proxy is required; the route runs inside
+Kirby’s normal PHP request lifecycle.
 
 All `/mcp` requests require `Authorization: Bearer ...`. Do not put credentials in query strings.
 Origin validation runs before MCP protocol handling, tokens are scope-checked per operation, and
 write/eval/query tools keep their existing confirmation and enablement gates. If the route is
 registered but `http.enabled` is false, it returns 404.
 
-Production OAuth config:
+Put the JSON examples below in your Kirby project’s MCP config file:
+`.kirby-mcp/mcp.json`. Older installs may still use `.kirby-mcp/config.json`; both are read.
+
+#### Local loopback token
+
+Shared-token mode is for local development only. Use it when the MCP client connects from the
+same machine and can send an `Authorization` header:
 
 ```json
 {
   "http": {
     "enabled": true,
     "path": "/mcp",
-    "allowedOrigins": ["https://client.example"],
+    "allowedOrigins": ["http://127.0.0.1:3000"],
     "auth": {
-      "mode": "oauth",
-      "issuer": "https://auth.example.test",
-      "audience": "https://example.test/mcp",
-      "jwksUri": "https://auth.example.test/.well-known/jwks.json",
+      "mode": "shared-token",
+      "token": "replace-with-a-long-random-secret",
       "scopes": ["kirby-mcp:read", "kirby-mcp:runtime", "kirby-mcp:write", "kirby-mcp:execute", "kirby-mcp:admin"]
     }
   }
 }
 ```
 
-OAuth mode validates JWT access tokens by issuer, audience/resource, JWKS signature, expiry, and
-operation scopes.
+The Kirby route rejects shared-token requests unless PHP reports the request’s `REMOTE_ADDR` as
+loopback. The route adapter does not use `http.host` or `http.port`; those fields only apply to
+the low-level `kirby-mcp http` listener/config check.
+
+#### Remote bearer token
 
 Remote-token mode is for public HTTPS Kirby routes when the MCP client can send static bearer
 headers, such as Claude Code, Cursor, `mcp-remote`, or a custom client:
@@ -497,28 +510,30 @@ and rejects non-loopback route requests unless Kirby/PHP sees the request as HTT
 for clients that can send an `Authorization` header; Claude web custom connectors should use OAuth
 instead.
 
-Shared-token mode is for loopback local development only:
+#### OAuth auth
+
+OAuth mode is for JWT-bearing clients and interactive remote auth flows, including Claude web
+custom connectors:
 
 ```json
 {
   "http": {
     "enabled": true,
     "path": "/mcp",
-    "allowedOrigins": ["http://127.0.0.1:3000"],
+    "allowedOrigins": ["https://client.example"],
     "auth": {
-      "mode": "shared-token",
-      "token": "replace-with-a-long-random-secret",
+      "mode": "oauth",
+      "issuer": "https://auth.example.test",
+      "audience": "https://example.test/mcp",
+      "jwksUri": "https://auth.example.test/.well-known/jwks.json",
       "scopes": ["kirby-mcp:read", "kirby-mcp:runtime", "kirby-mcp:write", "kirby-mcp:execute", "kirby-mcp:admin"]
     }
   }
 }
 ```
 
-The Kirby route rejects shared-token requests unless PHP reports the request’s `REMOTE_ADDR` as
-loopback. Use remote-token for public HTTPS clients that can send bearer headers, or OAuth for
-interactive clients such as Claude web custom connectors. The route adapter does not use
-`http.host` or `http.port`; those fields only apply to the low-level `kirby-mcp http`
-listener/config check.
+OAuth mode validates JWT access tokens by issuer, audience/resource, JWKS signature, expiry, and
+operation scopes.
 
 HTTP tokens are scope-checked per operation. Available scope names are:
 

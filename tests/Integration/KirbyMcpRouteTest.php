@@ -295,6 +295,29 @@ it('allows remote-token HTTP only when the request is fully loopback', function 
     });
 });
 
+it('serves OAuth protected resource metadata through the Kirby route adapter', function (): void {
+    kirbyMcpRouteWithHttpEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'oauth',
+        'KIRBY_MCP_HTTP_OAUTH_ISSUER' => 'https://auth.example.test',
+        'KIRBY_MCP_HTTP_OAUTH_AUDIENCE' => 'https://example.test/mcp',
+        'KIRBY_MCP_HTTP_OAUTH_JWKS_URI' => 'https://auth.example.test/.well-known/jwks.json',
+    ], function (): void {
+        $factory = new HttpFactory();
+        $request = $factory->createServerRequest('GET', 'https://example.test/.well-known/oauth-protected-resource', [
+            'REMOTE_ADDR' => '203.0.113.10',
+        ]);
+
+        $response = KirbyMcpRoute::handle(cmsPath(), $request);
+        $payload = kirbyMcpRouteDecodeJson($response->body());
+
+        expect($response->code())->toBe(200)
+            ->and($payload['authorization_servers'] ?? null)->toBe(['https://auth.example.test'])
+            ->and($payload['resource'] ?? null)->toBe('https://example.test/mcp')
+            ->and($payload['scopes_supported'] ?? [])->toContain('kirby-mcp:read');
+    });
+});
+
 it('rejects invalid remote-token bearer credentials', function (): void {
     kirbyMcpRouteWithHttpEnv([
         'KIRBY_MCP_HTTP_ENABLED' => '1',
