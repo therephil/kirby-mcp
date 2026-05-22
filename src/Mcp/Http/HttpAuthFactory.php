@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bnomei\KirbyMcp\Mcp\Http;
 
 use Bnomei\KirbyMcp\Project\KirbyMcpHttpConfig;
+use Bnomei\KirbyMcp\Project\KirbyMcpHttpToken;
 use Mcp\Server\Transport\Http\OAuth\AuthorizationTokenValidatorInterface;
 use Mcp\Server\Transport\Http\OAuth\JwksProvider;
 use Mcp\Server\Transport\Http\OAuth\JwtTokenValidator;
@@ -26,6 +27,14 @@ final readonly class HttpAuthFactory
     public function sharedTokenValidator(string $sharedToken, array $scopes = []): AuthorizationTokenValidatorInterface
     {
         return new SharedTokenValidator($sharedToken, $this->normalizedScopes($scopes));
+    }
+
+    /**
+     * @param list<KirbyMcpHttpToken> $tokens
+     */
+    public function remoteTokenValidator(array $tokens): AuthorizationTokenValidatorInterface
+    {
+        return new RemoteTokenValidator($tokens);
     }
 
     public function oauthValidator(KirbyMcpHttpConfig $config): AuthorizationTokenValidatorInterface

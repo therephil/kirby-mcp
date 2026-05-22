@@ -60,6 +60,8 @@ final class HttpMcpListener
         } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_SHARED_TOKEN && is_string($config->sharedToken)) {
             $sharedToken = $config->sharedToken;
             $tokenValidator = $authFactory->sharedTokenValidator($sharedToken, $config->scopes);
+        } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN) {
+            $tokenValidator = $authFactory->remoteTokenValidator($config->remoteTokens);
         } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_OAUTH && is_string($config->oauthIssuer) && is_string($config->oauthAudience)) {
             $tokenValidator = $authFactory->oauthValidator($config);
             $protectedResourceMetadata = $authFactory->metadata($config->oauthIssuer, $config->oauthAudience);

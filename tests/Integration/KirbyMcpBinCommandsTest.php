@@ -194,7 +194,7 @@ it('reports enabled HTTP config without starting the listener when JSON output i
     expect($decoded['errors'])->toBe([]);
 });
 
-it('fails closed before starting the HTTP listener when OAuth auth is configured but not implemented', function (): void {
+it('fails closed before starting the HTTP listener when non-shared-token auth is configured', function (): void {
     $bin = realpath(__DIR__ . '/../../bin/kirby-mcp');
     expect($bin)->not()->toBeFalse();
 
@@ -216,5 +216,5 @@ it('fails closed before starting the HTTP listener when OAuth auth is configured
     $process->run();
 
     expect($process->getExitCode())->toBe(1);
-    expect($process->getOutput())->toContain('HTTP OAuth listener auth is not implemented yet');
+    expect($process->getOutput())->toContain('HTTP listener auth currently supports shared-token only');
 });

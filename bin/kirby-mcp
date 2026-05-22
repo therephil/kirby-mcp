@@ -533,7 +533,7 @@ if ($subcommand === 'http') {
         && $config->enabled === true
         && $config->authMode !== KirbyMcpHttpConfig::AUTH_MODE_SHARED_TOKEN
     ) {
-        $commandErrors[] = 'HTTP OAuth listener auth is not implemented yet; use shared-token on loopback or run --check only.';
+        $commandErrors[] = 'HTTP listener auth currently supports shared-token only; use the Kirby route for remote-token/OAuth or run --check only.';
     }
 
     $payload = [
@@ -549,6 +549,7 @@ if ($subcommand === 'http') {
             'allowedOrigins' => $config->allowedOrigins,
             'authMode' => $config->authMode,
             'sharedTokenConfigured' => is_string($config->sharedToken) && $config->sharedToken !== '',
+            'remoteTokenCount' => count($config->remoteTokens),
             'oauthIssuer' => $config->oauthIssuer,
             'oauthAudience' => $config->oauthAudience,
             'oauthJwksUri' => $config->oauthJwksUri,

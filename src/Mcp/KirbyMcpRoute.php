@@ -54,6 +54,14 @@ final class KirbyMcpRoute
             return self::error(503, 'HTTP shared-token auth is only allowed for loopback requests.');
         }
 
+        if (
+            $config->authMode === KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN
+            && self::isLoopbackRemoteAddress($request) === false
+            && self::isHttpsRequest($request) === false
+        ) {
+            return self::error(503, 'HTTP remote-token auth requires HTTPS for non-loopback requests.');
+        }
+
         putenv(ProjectContext::ENV_PROJECT_ROOT . '=' . $projectRoot);
 
         try {
@@ -86,6 +94,8 @@ final class KirbyMcpRoute
         if ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_SHARED_TOKEN && is_string($config->sharedToken)) {
             $sharedToken = $config->sharedToken;
             $tokenValidator = $authFactory->sharedTokenValidator($sharedToken, $config->scopes);
+        } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN) {
+            $tokenValidator = $authFactory->remoteTokenValidator($config->remoteTokens);
         } elseif ($config->authMode === KirbyMcpHttpConfig::AUTH_MODE_OAUTH && is_string($config->oauthIssuer) && is_string($config->oauthAudience)) {
             $tokenValidator = $authFactory->oauthValidator($config);
             $protectedResourceMetadata = $authFactory->metadata($config->oauthIssuer, $config->oauthAudience);
@@ -152,6 +162,17 @@ final class KirbyMcpRoute
         return $remoteAddress === '::1'
             || $remoteAddress === '127.0.0.1'
             || str_starts_with($remoteAddress, '127.');
+    }
+
+    private static function isHttpsRequest(ServerRequestInterface $request): bool
+    {
+        if (strtolower($request->getUri()->getScheme()) === 'https') {
+            return true;
+        }
+
+        $https = $request->getServerParams()['HTTPS'] ?? null;
+
+        return is_string($https) && in_array(strtolower($https), ['1', 'on', 'true'], true);
     }
 
     /**

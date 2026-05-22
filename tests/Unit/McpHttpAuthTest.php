@@ -5,8 +5,10 @@ declare(strict_types=1);
 use Bnomei\KirbyMcp\Mcp\Http\HttpAuthFactory;
 use Bnomei\KirbyMcp\Mcp\Http\HttpOriginPolicy;
 use Bnomei\KirbyMcp\Mcp\Http\HttpAuthScopes;
+use Bnomei\KirbyMcp\Mcp\Http\RemoteTokenValidator;
 use Bnomei\KirbyMcp\Mcp\Http\SharedTokenValidator;
 use Bnomei\KirbyMcp\Project\KirbyMcpHttpConfig;
+use Bnomei\KirbyMcp\Project\KirbyMcpHttpToken;
 use Mcp\Server\Transport\Http\OAuth\JwtTokenValidator;
 
 it('validates shared bearer tokens with constant-time exact matches and scoped attributes', function (): void {
@@ -16,6 +18,24 @@ it('validates shared bearer tokens with constant-time exact matches and scoped a
     expect($allowed->isAllowed())->toBeTrue()
         ->and($allowed->getAttributes()['oauth.scopes'] ?? null)->toBe([HttpAuthScopes::READ])
         ->and($allowed->getAttributes()['oauth.subject'] ?? null)->toBe('shared-token');
+
+    $denied = $validator->validate('wrong-secret');
+    expect($denied->isAllowed())->toBeFalse()
+        ->and($denied->getStatusCode())->toBe(401)
+        ->and($denied->getError())->toBe('invalid_token');
+});
+
+it('validates hashed remote bearer tokens with per-token scoped attributes', function (): void {
+    $validator = new RemoteTokenValidator([
+        KirbyMcpHttpToken::fromPlainText('claude-code', 'remote-secret', [HttpAuthScopes::READ]),
+    ]);
+
+    $allowed = $validator->validate('remote-secret');
+    expect($allowed->isAllowed())->toBeTrue()
+        ->and($allowed->getAttributes()['oauth.scopes'] ?? null)->toBe([HttpAuthScopes::READ])
+        ->and($allowed->getAttributes()['oauth.subject'] ?? null)->toBe('remote-token:claude-code')
+        ->and($allowed->getAttributes()['oauth.claims']['token_type'] ?? null)->toBe('remote-token')
+        ->and($allowed->getAttributes()['oauth.claims']['token_id'] ?? null)->toBe('claude-code');
 
     $denied = $validator->validate('wrong-secret');
     expect($denied->isAllowed())->toBeFalse()
@@ -61,4 +81,13 @@ it('builds protected-resource metadata and OAuth JWT validators from HTTP config
     ));
 
     expect($validator)->toBeInstanceOf(JwtTokenValidator::class);
+});
+
+it('builds remote-token validators from token records', function (): void {
+    $factory = new HttpAuthFactory();
+    $validator = $factory->remoteTokenValidator([
+        KirbyMcpHttpToken::fromPlainText('remote', 'secret'),
+    ]);
+
+    expect($validator)->toBeInstanceOf(RemoteTokenValidator::class);
 });

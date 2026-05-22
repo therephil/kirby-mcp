@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bnomei\KirbyMcp\Project\KirbyMcpConfig;
 use Bnomei\KirbyMcp\Project\KirbyMcpHttpConfig;
+use Bnomei\KirbyMcp\Project\KirbyMcpHttpToken;
 
 function kirbyMcpHttpConfigTempRoot(array $config): string
 {
@@ -37,6 +38,10 @@ function kirbyMcpHttpConfigWithEnv(array $env, Closure $callback): mixed
         'KIRBY_MCP_HTTP_ALLOWED_ORIGINS',
         'KIRBY_MCP_HTTP_AUTH_MODE',
         'KIRBY_MCP_HTTP_TOKEN',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_HASH',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_ID',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_SCOPES',
         'KIRBY_MCP_HTTP_OAUTH_ISSUER',
         'KIRBY_MCP_HTTP_OAUTH_AUDIENCE',
         'KIRBY_MCP_HTTP_OAUTH_JWKS_URI',
@@ -182,6 +187,95 @@ it('rejects wildcard allowed origins', function (): void {
         });
     } finally {
         kirbyMcpHttpConfigRemoveRoot($root);
+    }
+});
+
+it('accepts remote-token auth with hashed config tokens', function (): void {
+    $root = kirbyMcpHttpConfigTempRoot([
+        'http' => [
+            'enabled' => true,
+            'auth' => [
+                'mode' => 'remote-token',
+                'tokens' => [
+                    [
+                        'id' => 'claude-code',
+                        'hash' => KirbyMcpHttpToken::hashPlainText('remote-secret'),
+                        'scopes' => ['kirby-mcp:read'],
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    try {
+        kirbyMcpHttpConfigWithEnv([], function () use ($root): void {
+            $config = KirbyMcpConfig::load($root)->http();
+
+            expect($config->authMode)->toBe(KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN)
+                ->and($config->remoteTokens)->toHaveCount(1)
+                ->and($config->remoteTokens[0]->id)->toBe('claude-code')
+                ->and($config->remoteTokens[0]->hasValidHash())->toBeTrue()
+                ->and($config->remoteTokens[0]->scopes)->toBe(['kirby-mcp:read'])
+                ->and($config->validationErrors())->toBe([]);
+        });
+    } finally {
+        kirbyMcpHttpConfigRemoveRoot($root);
+    }
+});
+
+it('accepts remote-token auth from environment token material', function (): void {
+    kirbyMcpHttpConfigWithEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'remote-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN' => 'remote-secret',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_ID' => 'env-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_SCOPES' => 'kirby-mcp:read,kirby-mcp:runtime',
+    ], function (): void {
+        $config = KirbyMcpConfig::load(sys_get_temp_dir() . '/missing-kirby-mcp-config')->http();
+
+        expect($config->authMode)->toBe(KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN)
+            ->and($config->remoteTokens)->toHaveCount(1)
+            ->and($config->remoteTokens[0]->id)->toBe('env-token')
+            ->and($config->remoteTokens[0]->hash)->toBe(KirbyMcpHttpToken::hashPlainText('remote-secret'))
+            ->and($config->remoteTokens[0]->scopes)->toBe(['kirby-mcp:read', 'kirby-mcp:runtime'])
+            ->and($config->validationErrors())->toBe([]);
+    });
+});
+
+it('rejects remote-token auth without token records or with invalid hashes', function (): void {
+    $missingRoot = kirbyMcpHttpConfigTempRoot([
+        'http' => [
+            'enabled' => true,
+            'auth' => [
+                'mode' => 'remote-token',
+            ],
+        ],
+    ]);
+    $invalidRoot = kirbyMcpHttpConfigTempRoot([
+        'http' => [
+            'enabled' => true,
+            'auth' => [
+                'mode' => 'remote-token',
+                'tokens' => [
+                    [
+                        'id' => 'bad',
+                        'hash' => 'plain-secret',
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    try {
+        kirbyMcpHttpConfigWithEnv([], function () use ($missingRoot, $invalidRoot): void {
+            expect(KirbyMcpConfig::load($missingRoot)->http()->validationErrors())
+                ->toContain('HTTP remote-token auth requires at least one token hash or KIRBY_MCP_HTTP_REMOTE_TOKEN.');
+            expect(KirbyMcpConfig::load($invalidRoot)->http()->validationErrors())
+                ->toContain('HTTP remote-token auth token hashes must use sha256:<64-hex> format.');
+        });
+    } finally {
+        kirbyMcpHttpConfigRemoveRoot($missingRoot);
+        kirbyMcpHttpConfigRemoveRoot($invalidRoot);
     }
 });
 

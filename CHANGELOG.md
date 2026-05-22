@@ -5,6 +5,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+- Added explicit `remote-token` HTTP auth for public Kirby `/mcp` routes used by header-capable clients, with hashed token records, per-token scopes, HTTPS enforcement for non-loopback requests, and unchanged query-string credential rejection.
+
 ## [1.6.1] - 2026-05-18
 
 - Fixed MCP tool input schemas for array parameters so strict OpenAI-compatible function-calling clients no longer reject `tools/list` results. thanks @ralphsun73221

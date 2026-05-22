@@ -338,6 +338,8 @@ final readonly class KirbyMcpConfig
         $http = is_array($http) ? $http : [];
         $auth = $http['auth'] ?? null;
         $auth = is_array($auth) ? $auth : [];
+        $scopes = $this->envStringList('KIRBY_MCP_HTTP_SCOPES')
+            ?? $this->stringList($auth['scopes'] ?? null);
 
         return new KirbyMcpHttpConfig(
             enabled: $this->envBool('KIRBY_MCP_HTTP_ENABLED')
@@ -368,13 +370,68 @@ final readonly class KirbyMcpConfig
                 ?? $this->stringValue($auth['audience'] ?? null),
             oauthJwksUri: $this->envString('KIRBY_MCP_HTTP_OAUTH_JWKS_URI')
                 ?? $this->stringValue($auth['jwksUri'] ?? $auth['jwks_uri'] ?? null),
-            scopes: $this->envStringList('KIRBY_MCP_HTTP_SCOPES')
-                ?? $this->stringList($auth['scopes'] ?? null),
+            scopes: $scopes,
+            remoteTokens: $this->remoteTokens($auth, $scopes),
         );
     }
 
     /**
-     * @return array<int, string>
+     * @param array<string, mixed> $auth
+     * @param list<string> $globalScopes
+     * @return list<KirbyMcpHttpToken>
+     */
+    private function remoteTokens(array $auth, array $globalScopes): array
+    {
+        $tokens = [];
+        $configured = $auth['tokens'] ?? null;
+
+        if (is_array($configured)) {
+            if (array_is_list($configured)) {
+                foreach ($configured as $index => $item) {
+                    if (is_array($item)) {
+                        $tokens[] = $this->remoteTokenFromArray($item, 'token-' . ((int) $index + 1), $globalScopes);
+                    }
+                }
+            } else {
+                foreach ($configured as $id => $item) {
+                    if (is_array($item)) {
+                        $tokens[] = $this->remoteTokenFromArray($item, is_string($id) ? $id : 'token', $globalScopes);
+                    }
+                }
+            }
+        }
+
+        $envToken = $this->envString('KIRBY_MCP_HTTP_REMOTE_TOKEN');
+        $envHash = $this->envString('KIRBY_MCP_HTTP_REMOTE_TOKEN_HASH');
+        $envId = $this->envString('KIRBY_MCP_HTTP_REMOTE_TOKEN_ID') ?? 'env';
+        $envScopes = $this->envStringList('KIRBY_MCP_HTTP_REMOTE_TOKEN_SCOPES') ?? $globalScopes;
+
+        if ($envToken !== null) {
+            $tokens[] = KirbyMcpHttpToken::fromPlainText($envId, $envToken, $envScopes);
+        } elseif ($envHash !== null) {
+            $tokens[] = new KirbyMcpHttpToken($envId, $envHash, $envScopes);
+        }
+
+        return $tokens;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param list<string> $globalScopes
+     */
+    private function remoteTokenFromArray(array $item, string $fallbackId, array $globalScopes): KirbyMcpHttpToken
+    {
+        $scopes = $this->stringList($item['scopes'] ?? null);
+
+        return new KirbyMcpHttpToken(
+            id: $this->stringValue($item['id'] ?? null) ?? trim($fallbackId),
+            hash: $this->stringValue($item['hash'] ?? $item['tokenHash'] ?? $item['token_hash'] ?? null) ?? '',
+            scopes: $scopes === [] ? $globalScopes : $scopes,
+        );
+    }
+
+    /**
+     * @return list<string>
      */
     private function stringList(mixed $value): array
     {
@@ -420,7 +477,7 @@ final readonly class KirbyMcpConfig
     }
 
     /**
-     * @return array<int, string>|null
+     * @return list<string>|null
      */
     private function envStringList(string $name): ?array
     {
@@ -493,6 +550,10 @@ final readonly class KirbyMcpConfig
         $mode = strtolower(trim($mode));
         if ($mode === 'shared' || $mode === 'token') {
             return KirbyMcpHttpConfig::AUTH_MODE_SHARED_TOKEN;
+        }
+
+        if (in_array($mode, ['api-key', 'api_key', 'bearer', 'remote', 'remote-bearer'], true)) {
+            return KirbyMcpHttpConfig::AUTH_MODE_REMOTE_TOKEN;
         }
 
         return $mode;

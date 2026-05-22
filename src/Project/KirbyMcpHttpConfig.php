@@ -11,11 +11,13 @@ final readonly class KirbyMcpHttpConfig
     public const DEFAULT_PORT = 8765;
     public const DEFAULT_PATH = '/mcp';
     public const AUTH_MODE_OAUTH = 'oauth';
+    public const AUTH_MODE_REMOTE_TOKEN = 'remote-token';
     public const AUTH_MODE_SHARED_TOKEN = 'shared-token';
 
     /**
-     * @param array<int, string> $allowedOrigins
-     * @param array<int, string> $scopes
+     * @param list<string> $allowedOrigins
+     * @param list<string> $scopes
+     * @param list<KirbyMcpHttpToken> $remoteTokens
      */
     public function __construct(
         public bool $enabled = self::DEFAULT_ENABLED,
@@ -29,6 +31,7 @@ final readonly class KirbyMcpHttpConfig
         public ?string $oauthAudience = null,
         public ?string $oauthJwksUri = null,
         public array $scopes = [],
+        public array $remoteTokens = [],
     ) {
     }
 
@@ -69,8 +72,8 @@ final readonly class KirbyMcpHttpConfig
 
         if ($this->authMode === null) {
             $errors[] = 'HTTP auth is required when HTTP is enabled.';
-        } elseif (!in_array($this->authMode, [self::AUTH_MODE_OAUTH, self::AUTH_MODE_SHARED_TOKEN], true)) {
-            $errors[] = 'HTTP auth mode must be oauth or shared-token.';
+        } elseif (!in_array($this->authMode, [self::AUTH_MODE_OAUTH, self::AUTH_MODE_REMOTE_TOKEN, self::AUTH_MODE_SHARED_TOKEN], true)) {
+            $errors[] = 'HTTP auth mode must be oauth, remote-token, or shared-token.';
         }
 
         if ($this->authMode === self::AUTH_MODE_SHARED_TOKEN) {
@@ -94,6 +97,27 @@ final readonly class KirbyMcpHttpConfig
 
             if ($this->oauthJwksUri === null || $this->oauthJwksUri === '') {
                 $errors[] = 'HTTP OAuth auth requires a JWKS URI.';
+            }
+        }
+
+        if ($this->authMode === self::AUTH_MODE_REMOTE_TOKEN) {
+            if ($this->remoteTokens === []) {
+                $errors[] = 'HTTP remote-token auth requires at least one token hash or KIRBY_MCP_HTTP_REMOTE_TOKEN.';
+            }
+
+            foreach ($this->remoteTokens as $token) {
+                if (!$token instanceof KirbyMcpHttpToken) {
+                    $errors[] = 'HTTP remote-token auth tokens must be valid token records.';
+                    continue;
+                }
+
+                if (trim($token->id) === '') {
+                    $errors[] = 'HTTP remote-token auth token IDs must not be empty.';
+                }
+
+                if (!$token->hasValidHash()) {
+                    $errors[] = 'HTTP remote-token auth token hashes must use sha256:<64-hex> format.';
+                }
             }
         }
 

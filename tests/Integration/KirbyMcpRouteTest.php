@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Bnomei\KirbyMcp\Mcp\KirbyMcpRoute;
 use Bnomei\KirbyMcp\Project\KirbyMcpConfig;
+use Bnomei\KirbyMcp\Project\KirbyMcpHttpToken;
 use GuzzleHttp\Psr7\HttpFactory;
 
 /**
@@ -68,6 +69,10 @@ function kirbyMcpRouteWithHttpEnv(array $env, Closure $callback): mixed
         'KIRBY_MCP_HTTP_ALLOWED_ORIGINS',
         'KIRBY_MCP_HTTP_AUTH_MODE',
         'KIRBY_MCP_HTTP_TOKEN',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_HASH',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_ID',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_SCOPES',
         'KIRBY_MCP_HTTP_OAUTH_ISSUER',
         'KIRBY_MCP_HTTP_OAUTH_AUDIENCE',
         'KIRBY_MCP_HTTP_OAUTH_JWKS_URI',
@@ -202,6 +207,70 @@ it('ignores low-level listener host and port validation for Kirby route requests
 
         expect($response->code())->toBe(200);
         expect($response->headers()['Mcp-Session-Id'] ?? '')->not()->toBe('');
+    });
+});
+
+it('serves remote-token Kirby route requests from public HTTPS clients', function (): void {
+    kirbyMcpRouteWithHttpEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'remote-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN' => 'remote-secret',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_ID' => 'claude-code',
+    ], function (): void {
+        $factory = new HttpFactory();
+        $request = $factory->createServerRequest('POST', 'https://example.test/mcp', [
+            'REMOTE_ADDR' => '203.0.113.10',
+        ])
+            ->withHeader('Authorization', 'Bearer remote-secret')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($factory->createStream(kirbyMcpRouteInitializePayload()));
+
+        $response = KirbyMcpRoute::handle(cmsPath(), $request);
+
+        expect($response->code())->toBe(200);
+        expect($response->headers()['Mcp-Session-Id'] ?? '')->not()->toBe('');
+    });
+});
+
+it('rejects remote-token Kirby route requests from public HTTP clients', function (): void {
+    kirbyMcpRouteWithHttpEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'remote-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN_HASH' => KirbyMcpHttpToken::hashPlainText('remote-secret'),
+    ], function (): void {
+        $factory = new HttpFactory();
+        $request = $factory->createServerRequest('POST', 'http://example.test/mcp', [
+            'REMOTE_ADDR' => '203.0.113.10',
+        ])
+            ->withHeader('Authorization', 'Bearer remote-secret')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($factory->createStream(kirbyMcpRouteInitializePayload()));
+
+        $response = KirbyMcpRoute::handle(cmsPath(), $request);
+
+        expect($response->code())->toBe(503);
+        expect($response->body())->toContain('HTTP remote-token auth requires HTTPS for non-loopback requests.');
+    });
+});
+
+it('rejects invalid remote-token bearer credentials', function (): void {
+    kirbyMcpRouteWithHttpEnv([
+        'KIRBY_MCP_HTTP_ENABLED' => '1',
+        'KIRBY_MCP_HTTP_AUTH_MODE' => 'remote-token',
+        'KIRBY_MCP_HTTP_REMOTE_TOKEN' => 'remote-secret',
+    ], function (): void {
+        $factory = new HttpFactory();
+        $request = $factory->createServerRequest('POST', 'https://example.test/mcp', [
+            'REMOTE_ADDR' => '203.0.113.10',
+        ])
+            ->withHeader('Authorization', 'Bearer wrong-secret')
+            ->withHeader('Content-Type', 'application/json')
+            ->withBody($factory->createStream(kirbyMcpRouteInitializePayload()));
+
+        $response = KirbyMcpRoute::handle(cmsPath(), $request);
+
+        expect($response->code())->toBe(401);
+        expect($response->body())->toContain('invalid_token');
     });
 });
 
