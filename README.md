@@ -789,6 +789,7 @@ Environment variables:
 - No dump output: ensure `dumps.enabled=true`, a `.kirby-mcp/dumps.jsonl` exists, and use the correct `traceId` with `kirby_dump_log_tail`.
 - HTTP client gets 401/403: confirm Bearer auth, token audience/resource, scopes, and `Origin` match the configured HTTP settings.
 - Claude custom connector cannot connect: confirm the public URL is the MCP endpoint (`https://example.com/mcp`), the route helper is registered, `http.enabled=true`, `http.auth.mode=oauth`, `http.oauthProvider.enabled=true`, and non-loopback requests reach Kirby over HTTPS.
+- PHP_BINARY resolves to php-fpm when running behind a web server: If kirby-mcp is served via nginx + php-fpm (e.g. as an HTTP MCP endpoint), PHP_BINARY points to the fpm binary rather than the CLI binary, causing all runtime commands to fail with exit code 126. Set KIRBY_MCP_PHP_BINARY to the correct CLI binary path to override it. In environments where putenv is your only option (e.g. where you can't set env vars at the pool level), add this at the very top of your project's index.php, before any require statements: `putenv('KIRBY_MCP_PHP_BINARY=/opt/php-x.x/bin/php');`
 
 ## Development
 
