@@ -31,7 +31,7 @@ final class KirbyCliRunner
         $prepend = __DIR__ . DIRECTORY_SEPARATOR . 'kirby-cli-prepend.php';
         $command = array_merge([$binary], $args);
         if (is_file($prepend)) {
-            $command = array_merge([PHP_BINARY, '-d', 'auto_prepend_file=' . $prepend, $binary], $args);
+            $command = array_merge([getenv('KIRBY_MCP_PHP_BINARY') ?: PHP_BINARY, '-d', 'auto_prepend_file=' . $prepend, $binary], $args);
         }
 
         $process = new Process(
